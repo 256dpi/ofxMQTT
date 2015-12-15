@@ -8,26 +8,6 @@ ofxMQTT::ofxMQTT() : mosquittopp() {
   bAutoReconnect = true;
 }
 
-ofxMQTT::ofxMQTT(const ofxMQTT& mom) {
-  clientID = mom.clientID;
-  host = mom.host;
-  port = mom.port;
-  username = mom.username;
-  password = mom.password;
-  keepAlive = mom.keepAlive;
-}
-
-ofxMQTT & ofxMQTT::operator=(const ofxMQTT &mom) {
-  clientID = mom.clientID;
-  host = mom.host;
-  port = mom.port;
-  username = mom.username;
-  password = mom.password;
-  keepAlive = mom.keepAlive;
-
-  return *this;
-}
-
 ofxMQTT::ofxMQTT(string clientID, string host, int port, bool cleanSession) : mosquittopp(clientID.c_str(), cleanSession) {
   lib_init();
   this->clientID = clientID;
@@ -95,7 +75,7 @@ void ofxMQTT::unsubscribe(int mid, string sub) {
 
 void ofxMQTT::start() {
   lock();
-  startThread(true, false);
+  startThread(true);
   unlock();
 }
 
@@ -131,39 +111,11 @@ void ofxMQTT::setUserdata(void *userdata) {
   unlock();
 }
 
-void ofxMQTT::setTls(string cafile, string capath, string certfile, string keyfile, string keyfilePath) {
-  int ret;
-  if (!keyfile.empty() && !keyfilePath.empty())
-  {
-      ofxMQTT::keyfilePath = keyfilePath;
-      check_error(tls_set(cafile.c_str(), capath.c_str(), certfile.c_str(), keyfile.c_str(), *pw_callback));
-  }
-  else
-  {
-      check_error(tls_set(cafile.c_str(), capath.c_str(), certfile.c_str()));
-  }
-}
-
-void ofxMQTT::setTlsOptions(int verifyMode, string version, string ciphers) {
-  check_error(tls_opts_set(verifyMode, version.c_str(), ciphers.c_str()));
-}
-
-void ofxMQTT::setTlsInsecure(bool insecure) {
-  check_error(tls_insecure_set(insecure));
-}
-
-void ofxMQTT::setPSK(string psk, string identity, string ciphers) {
-  check_error(tls_psk_set(psk.c_str(), identity.c_str(), ciphers.c_str()));
-}
-
 void ofxMQTT::threadedFunction() {
-  while (isThreadRunning())
-  {
-    if (lock())
-    {
+  while (isThreadRunning()) {
+    if (lock()) {
       int rc = loop();
-      if (MOSQ_ERR_SUCCESS != rc && bAutoReconnect)
-      {
+      if (MOSQ_ERR_SUCCESS != rc && bAutoReconnect) {
         ofLogError("ofxMQTT") << mosqpp::strerror(rc);
         reconnect();
         ofSleepMillis(20);
@@ -174,19 +126,21 @@ void ofxMQTT::threadedFunction() {
 }
 
 void ofxMQTT::on_connect(int rc) {
-  if (MOSQ_ERR_SUCCESS == rc)
-  {
+  if (MOSQ_ERR_SUCCESS == rc) {
       bConnected = true;
-  } else ofLogError("ofxMQTT") << mosqpp::strerror(rc);
+  } else {
+    ofLogError("ofxMQTT") << mosqpp::strerror(rc);
+  }
 
   ofNotifyEvent(onConnect, rc, this);
 }
 
 void ofxMQTT::on_disconnect(int rc) {
-  if (MOSQ_ERR_SUCCESS == rc)
-  {
+  if (MOSQ_ERR_SUCCESS == rc) {
       bConnected = false;
-  } else ofLogError("ofxMQTT") << mosqpp::strerror(rc);
+  } else {
+    ofLogError("ofxMQTT") << mosqpp::strerror(rc);
+  }
 
   ofNotifyEvent(onDisconnect, rc, this);
 }

@@ -17,8 +17,6 @@ struct ofxMQTTMessage {
 class ofxMQTT : public mosqpp::mosquittopp, public ofThread {
 public:
   ofxMQTT();
-  ofxMQTT(const ofxMQTT& mom);
-  ofxMQTT & operator=(const ofxMQTT& mom);
   ofxMQTT(string clientID, string host, int port, bool cleanSession=true);
   ~ofxMQTT();
 
@@ -48,10 +46,6 @@ public:
   void setKeepAlive(int keepAlive);
   void setAutoReconnect(bool reconnect);
   void setUserdata(void *userdata);
-  void setTls(string cafile, string capath=NULL, string certfile=NULL, string keyfile=NULL, string keyfilePath=NULL);
-  void setTlsOptions(int verifyMode, string version=NULL, string ciphers=NULL);
-  void setTlsInsecure(bool insecure);
-  void setPSK(string psk, string identity, string ciphers=NULL);
 
   ofEvent<int> onConnect;
   ofEvent<ofxMQTTMessage> onMessage;
@@ -61,7 +55,6 @@ public:
   ofEvent<int> onUnsubscribe;
 
 private:
-
   string clientID;
   string host;
   int port;
