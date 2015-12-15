@@ -42,13 +42,12 @@ public:
   bool connected();
   void disconnect();
 
-  ofEvent<int> onConnect;
+  ofEvent<void> onOnline;
   ofEvent<ofxMQTTMessage> onMessage;
-  ofEvent<int> onDisconnect;
+  ofEvent<void> onOffline;
 
   // never call these functions:
   void _on_connect(int rc);
   void _on_disconnect(int rc);
   void _on_message(const struct mosquitto_message *message);
-  void _on_log(int level, const char *str);
 };

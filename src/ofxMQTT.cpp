@@ -36,7 +36,6 @@ ofxMQTT::~ofxMQTT() {
   }
 
   mosquitto_destroy(mosq);
-
   mosquitto_lib_cleanup();
 }
 
@@ -50,28 +49,34 @@ int ofxMQTT::nextMid(){
   return mid;
 }
 
+// not thread-safe
 void ofxMQTT::begin(string hostname) {
   begin(hostname, 1883);
 }
 
+// not thread-safe
 void ofxMQTT::begin(string hostname, int port) {
   this->hostname = hostname;
   this->port = port;
 }
 
+// not thread-safe
 void ofxMQTT::setWill(string topic) {
   setWill(topic, "");
 }
 
+// not thread-safe
 void ofxMQTT::setWill(string topic, string payload) {
   this->willTopic = topic;
   this->willPayload = payload;
 }
 
+// not thread-safe
 bool ofxMQTT::connect(string clientId) {
   return connect(clientId, "", "");
 }
 
+// not thread-safe
 bool ofxMQTT::connect(string clientId, string username, string password) {
   this->clientId = clientId;
   this->username = username;
@@ -111,33 +116,47 @@ void ofxMQTT::publish(string topic) {
 }
 
 void ofxMQTT::publish(string topic, string payload) {
-  int mid = nextMid();
-
-  lock();
-  mosquitto_publish(mosq, &mid, topic.c_str(), (int)payload.length(), payload.c_str(), 0, false);
-  unlock();
+  if(isCurrentThread()) {
+    int mid = nextMid();
+    mosquitto_publish(mosq, &mid, topic.c_str(), (int)payload.length(), payload.c_str(), 0, false);
+  } else {
+    lock();
+    int mid = nextMid();
+    mosquitto_publish(mosq, &mid, topic.c_str(), (int)payload.length(), payload.c_str(), 0, false);
+    unlock();
+  }
 }
 
 void ofxMQTT::subscribe(string topic) {
-  int mid = nextMid();
-
-  lock();
-  mosquitto_subscribe(mosq, &mid, topic.c_str(), 0);
-  unlock();
+  if(isCurrentThread()) {
+    int mid = nextMid();
+    mosquitto_subscribe(mosq, &mid, topic.c_str(), 0);
+  } else {
+    lock();
+    int mid = nextMid();
+    mosquitto_subscribe(mosq, &mid, topic.c_str(), 0);
+    unlock();
+  }
 }
 
 void ofxMQTT::unsubscribe(string topic) {
-  int mid = nextMid();
-
-  lock();
-  mosquitto_unsubscribe(mosq, &mid, topic.c_str());
-  unlock();
+  if(isCurrentThread()) {
+    int mid = nextMid();
+    mosquitto_unsubscribe(mosq, &mid, topic.c_str());
+  } else {
+    lock();
+    int mid = nextMid();
+    mosquitto_unsubscribe(mosq, &mid, topic.c_str());
+    unlock();
+  }
 }
 
+// not thread-safe
 bool ofxMQTT::connected() {
   return alive;
 }
 
+// not thread-safe
 void ofxMQTT::disconnect() {
   stop();
 
@@ -148,12 +167,17 @@ void ofxMQTT::disconnect() {
 
 void ofxMQTT::_on_connect(int rc) {
   alive = rc == MOSQ_ERR_SUCCESS;
-  ofNotifyEvent(onConnect, rc, this);
+
+  if(alive){
+    ofNotifyEvent(onOnline, this);
+  } else {
+    ofNotifyEvent(onOffline, this);
+  }
 }
 
-void ofxMQTT::_on_disconnect(int rc) {
+void ofxMQTT::_on_disconnect(int _) {
   alive = false;
-  ofNotifyEvent(onDisconnect, rc, this);
+  ofNotifyEvent(onOffline, this);
 }
 
 void ofxMQTT::_on_message(const struct mosquitto_message *message) {
