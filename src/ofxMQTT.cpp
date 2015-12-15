@@ -1,182 +1,202 @@
 #include "ofxMQTT.h"
 
-using namespace mosqpp;
+/* mosquitto */
 
-ofxMQTT::ofxMQTT() : mosquittopp() {
-  lib_init();
-  bConnected = false;
-  bAutoReconnect = true;
+static void on_connect_wrapper(struct mosquitto *_, void *userdata, int rc) {
+  class ofxMQTT *m = (class ofxMQTT *)userdata;
+  m->_on_connect(rc);
 }
 
-ofxMQTT::ofxMQTT(string clientID, string host, int port, bool cleanSession) : mosquittopp(clientID.c_str(), cleanSession) {
-  lib_init();
-  this->clientID = clientID;
-  this->host = host;
-  this->port = port;
-  this->keepAlive = 60;
+static void on_disconnect_wrapper(struct mosquitto *_, void *userdata, int rc) {
+  class ofxMQTT *m = (class ofxMQTT *)userdata;
+  m->_on_disconnect(rc);
+}
+
+static void on_message_wrapper(struct mosquitto *_, void *userdata, const struct mosquitto_message *message) {
+  class ofxMQTT *m = (class ofxMQTT *)userdata;
+  m->_on_message(message);
+}
+
+/* ofxMQTT */
+
+ofxMQTT::ofxMQTT() {
+  mosquitto_lib_init();
+
+  mosq = mosquitto_new("ofxMQTT", true, this);
+  mosquitto_connect_callback_set(mosq, on_connect_wrapper);
+  mosquitto_disconnect_callback_set(mosq, on_disconnect_wrapper);
+  mosquitto_message_callback_set(mosq, on_message_wrapper);
 }
 
 ofxMQTT::~ofxMQTT() {
-  lock();
+  stop();
 
-  if (isThreadRunning()) {
-      stopThread();
+  if(alive) {
+    mosquitto_disconnect(mosq);
   }
 
-  lib_cleanup();
-  unlock();
+  mosquitto_destroy(mosq);
+
+  mosquitto_lib_cleanup();
 }
 
-void ofxMQTT::reinitialise(string clientID, bool cleanSession) {
-  lock();
-  this->clientID = clientID;
-  check_error(mosquittopp::reinitialise(clientID.c_str(), cleanSession));
-  unlock();
+int ofxMQTT::nextMid(){
+  mid++;
+
+  if(mid > 65536) {
+    mid = 0;
+  }
+
+  return mid;
 }
 
-void ofxMQTT::setup(string host, int port, int keepAlive) {
-  lock();
-  this->host = host;
+void ofxMQTT::begin(string hostname) {
+  begin(hostname, 1883);
+}
+
+void ofxMQTT::begin(string hostname, int port) {
+  this->hostname = hostname;
   this->port = port;
-  this->keepAlive = keepAlive;
+}
+
+void ofxMQTT::setWill(string topic) {
+  setWill(topic, "");
+}
+
+void ofxMQTT::setWill(string topic, string payload) {
+  this->willTopic = topic;
+  this->willPayload = payload;
+}
+
+bool ofxMQTT::connect(string clientId) {
+  return connect(clientId, "", "");
+}
+
+bool ofxMQTT::connect(string clientId, string username, string password) {
+  this->clientId = clientId;
+  this->username = username;
+  this->password = password;
+
+  lock();
+
+  mosquitto_reinitialise(mosq, this->clientId.c_str(), true, this);
+  mosquitto_connect_callback_set(mosq, on_connect_wrapper);
+  mosquitto_disconnect_callback_set(mosq, on_disconnect_wrapper);
+  mosquitto_message_callback_set(mosq, on_message_wrapper);
+
+  if(!this->username.empty() && !this->password.empty()) {
+    mosquitto_username_pw_set(mosq, this->username.c_str(), this->password.c_str());
+  }
+
+  if(!willTopic.empty() && !willPayload.empty()) {
+    mosquitto_will_set(mosq, willTopic.c_str(), (int)willPayload.length(), willPayload.c_str(), 0, false);
+  }
+
+  int rc = mosquitto_connect(mosq, hostname.c_str(), port, 60);
+
+  unlock();
+
+  if(rc != MOSQ_ERR_SUCCESS) {
+    ofLogError("ofxMQTT") << "Connect error: " << mosquitto_strerror(rc);
+    return false;
+  }
+
+  start();
+
+  return true;
+}
+
+void ofxMQTT::publish(string topic) {
+  publish(topic, "");
+}
+
+void ofxMQTT::publish(string topic, string payload) {
+  int mid = nextMid();
+
+  lock();
+  mosquitto_publish(mosq, &mid, topic.c_str(), (int)payload.length(), payload.c_str(), 0, false);
   unlock();
 }
 
-void ofxMQTT::connect() {
-  check_error(mosquittopp::connect(host.c_str(), port, keepAlive));
-  start();
+void ofxMQTT::subscribe(string topic) {
+  int mid = nextMid();
+
+  lock();
+  mosquitto_subscribe(mosq, &mid, topic.c_str(), 0);
+  unlock();
 }
 
-void ofxMQTT::connect(string bindAddress) {
-  check_error(mosquittopp::connect(host.c_str(), port, keepAlive, bindAddress.c_str()));
-  start();
+void ofxMQTT::unsubscribe(string topic) {
+  int mid = nextMid();
+
+  lock();
+  mosquitto_unsubscribe(mosq, &mid, topic.c_str());
+  unlock();
 }
 
-void ofxMQTT::reconnect() {
-  check_error(mosquittopp::reconnect());
+bool ofxMQTT::connected() {
+  return alive;
 }
 
 void ofxMQTT::disconnect() {
   stop();
-  check_error(mosquittopp::disconnect());
+
+  lock();
+  mosquitto_disconnect(mosq);
+  unlock();
 }
 
-void ofxMQTT::publish(int mid, string topic, string payload, int qos, bool retain) {
-  check_error(mosquittopp::publish(&mid, topic.c_str(), payload.size(), payload.c_str(), qos, retain));
+void ofxMQTT::_on_connect(int rc) {
+  alive = rc == MOSQ_ERR_SUCCESS;
+  ofNotifyEvent(onConnect, rc, this);
 }
 
-void ofxMQTT::subscribe(int mid, string sub, int qos) {
-  check_error(mosquittopp::subscribe(&mid, sub.c_str(), qos));
+void ofxMQTT::_on_disconnect(int rc) {
+  alive = false;
+  ofNotifyEvent(onDisconnect, rc, this);
 }
 
-void ofxMQTT::unsubscribe(int mid, string sub) {
-  check_error(mosquittopp::unsubscribe(&mid, sub.c_str()));
+void ofxMQTT::_on_message(const struct mosquitto_message *message) {
+  string payload((char*)message->payload, (uint)message->payloadlen);
+
+  ofxMQTTMessage msg;
+  msg.topic = message->topic;
+  msg.payload = payload;
+
+  ofNotifyEvent(onMessage, msg, this);
 }
+
+/* ofThread */
 
 void ofxMQTT::start() {
   lock();
-  startThread(true);
+  if (!isThreadRunning()) {
+    startThread(true);
+  }
   unlock();
 }
 
 void ofxMQTT::stop() {
   lock();
-  stopThread();
-  unlock();
-}
-
-void ofxMQTT::setUsernameAndPassword(string username, string password) {
-  lock();
-  this->username = username;
-  this->password = password;
-  check_error(username_pw_set(username.c_str(), password.c_str()));
-  unlock();
-}
-
-void ofxMQTT::setKeepAlive(int keepAlive) {
-  lock();
-  this->keepAlive = keepAlive;
-  unlock();
-}
-
-void ofxMQTT::setAutoReconnect(bool reconnect) {
-  lock();
-  this->bAutoReconnect = reconnect;
-  unlock();
-}
-
-void ofxMQTT::setUserdata(void *userdata) {
-  lock();
-  this->userdata = userdata;
+  if (isThreadRunning()) {
+    stopThread();
+  }
   unlock();
 }
 
 void ofxMQTT::threadedFunction() {
   while (isThreadRunning()) {
     if (lock()) {
-      int rc = loop();
-      if (MOSQ_ERR_SUCCESS != rc && bAutoReconnect) {
-        ofLogError("ofxMQTT") << mosqpp::strerror(rc);
-        reconnect();
-        ofSleepMillis(20);
+      int rc1 = mosquitto_loop(mosq, 0, 1);
+      if (rc1 != MOSQ_ERR_SUCCESS) {
+        ofLogError("ofxMQTT") << "Loop error: " << mosquitto_strerror(rc1);
+
+        int rc2 = mosquitto_reconnect(mosq);
+        if (rc2 != MOSQ_ERR_SUCCESS) {
+          ofLogError("ofxMQTT") << "Reconnect error: " << mosquitto_strerror(rc2);
+        }
       }
       unlock();
     }
   }
-}
-
-void ofxMQTT::on_connect(int rc) {
-  if (MOSQ_ERR_SUCCESS == rc) {
-      bConnected = true;
-  } else {
-    ofLogError("ofxMQTT") << mosqpp::strerror(rc);
-  }
-
-  ofNotifyEvent(onConnect, rc, this);
-}
-
-void ofxMQTT::on_disconnect(int rc) {
-  if (MOSQ_ERR_SUCCESS == rc) {
-      bConnected = false;
-  } else {
-    ofLogError("ofxMQTT") << mosqpp::strerror(rc);
-  }
-
-  ofNotifyEvent(onDisconnect, rc, this);
-}
-
-void ofxMQTT::on_message(const struct mosquitto_message *message) {
-  ofxMQTTMessage msg;
-  msg.mid = message->mid;
-  msg.topic = message->topic;
-  msg.payload = message->payload;
-  msg.payloadlen = message->payloadlen;
-  msg.qos = message->qos;
-  msg.retain = message->retain;
-
-  ofNotifyEvent(onMessage, msg, this);
-}
-
-void ofxMQTT::on_publish(int rc) {
-  ofNotifyEvent(onPublish, rc, this);
-}
-
-void ofxMQTT::on_subscribe(int mid, int qos_count, const int *granted_qos) {
-  ofNotifyEvent(onSubscribe, mid, this);
-}
-
-void ofxMQTT::on_unsubscribe(int mid) {
-  ofNotifyEvent(onUnsubscribe, mid, this);
-}
-
-void ofxMQTT::on_log(int level, const char *str) {
-  ofLogVerbose("ofxMQTT") << "on_log : level = " << level << ", str = " << ofToString(str);
-}
-
-void ofxMQTT::on_error() {
-  ofLogError("ofxMQTT") << "error";
-}
-
-void ofxMQTT::check_error(int ret) {
-  if (0 < ret) ofLogError("ofxMQTT") << mosqpp::strerror(ret);
 }
