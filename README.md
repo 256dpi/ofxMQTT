@@ -8,6 +8,8 @@ The first release of the library only supports QoS0 and the basic features to ge
 
 This library is an alternative to the [ofxMosquitto](https://github.com/hideyukisaito/ofxMosquitto) addon by @hideyukisaito which didn't get much attention lately.
 
+[Download version 1.0.0 of the library.](https://github.com/256dpi/ofxMQTT/archive/v1.0.0.zip)
+
 ## Example
 
 The following example connects to shiftr.io. You can check on your app after a successful connection here: <https://shiftr.io/try>.
