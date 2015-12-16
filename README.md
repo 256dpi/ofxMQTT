@@ -72,8 +72,8 @@ void setWill(string topic, string payload);
 Connect to broker using the supplied client id and an optional username and password:
 
 ```c++
-boolean connect(string clientId);
-boolean connect(string clientId, string username, string password);
+bool connect(string clientId);
+bool connect(string clientId, string username, string password);
 ```
 
 _This functions returns a value that indicates if the connection has been established successfully._
