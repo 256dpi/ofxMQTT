@@ -165,7 +165,7 @@ void ofxMQTT::disconnect() {
 }
 
 void ofxMQTT::_on_connect(int rc) {
-  alive = rc == MOSQ_ERR_SUCCESS;
+  alive = (rc == MOSQ_ERR_SUCCESS);
 
   if(alive){
     ofNotifyEvent(onOnline, this);
