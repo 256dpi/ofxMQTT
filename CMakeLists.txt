@@ -22,7 +22,6 @@ set(SOURCE_FILES
     libs/mosquitto/src/messages_mosq.c
     libs/mosquitto/src/mosquitto.c
     libs/mosquitto/src/mosquitto_internal.h
-    libs/mosquitto/src/mosquittopp.cpp
     libs/mosquitto/src/mqtt3_protocol.h
     libs/mosquitto/src/net_mosq.c
     libs/mosquitto/src/read_handle.c
