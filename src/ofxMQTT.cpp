@@ -151,7 +151,6 @@ void ofxMQTT::unsubscribe(string topic) {
   }
 }
 
-// not thread-safe
 bool ofxMQTT::connected() {
   return alive;
 }
