@@ -116,3 +116,11 @@ Disconnects from the broker:
 ```c++
 void disconnect();
 ```
+
+You can add event listeners for the following events to receive status updates and incoming messages:
+
+```c++
+ofEvent<void> onOnline;
+ofEvent<ofxMQTTMessage> onMessage;
+ofEvent<void> onOffline;
+``
