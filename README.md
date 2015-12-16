@@ -52,3 +52,67 @@ void ofApp::keyPressed(int key){
 ```
 
 The corresponding header file can be found [here](https://github.com/256dpi/ofxMQTT/blob/master/example-ofxMQTT/src/ofApp.h).
+
+## API
+
+Initialize the object using the hostname of the broker and the brokers port (default: `1883`):
+
+```c++
+bool begin(string hostname);
+bool begin(string hostname, int port;
+```
+
+Set the will message that gets registered on a connect:
+
+```c++
+void setWill(string topic);
+void setWill(string topic, string payload);
+```
+
+Connect to broker using the supplied client id and an optional username and password:
+
+```c++
+boolean connect(string clientId);
+boolean connect(string clientId, string username, string password);
+```
+
+_This functions returns a value that indicates if the connection has been established successfully._
+
+Publishes a message to the broker with an optional payload:
+
+```c++
+void publish(string topic);
+void publish(string topic, string payload);
+```
+
+Subscribe to a topic:
+
+```c++
+void subscribe(string topic);
+```
+
+Unsubscribe from a topic:
+
+```c++
+void unsubscribe(string topic);
+```
+
+Sends and receives packets:
+
+```c++
+void update();
+```
+
+_This function should be called in every `update` loop._
+
+Check if the client is currently connected:
+
+```c++
+bool connected();
+```
+
+Disconnects from the broker:
+
+```c++
+void disconnect();
+```
