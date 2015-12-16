@@ -9,9 +9,6 @@ public:
   void setup();
   void exit();
 
-  void update();
-  void draw();
-
   void onOnline();
   void onOffline();
   void onMessage(ofxMQTTMessage &msg);

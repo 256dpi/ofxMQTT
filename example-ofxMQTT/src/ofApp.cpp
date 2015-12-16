@@ -13,9 +13,6 @@ void ofApp::exit(){
   client.disconnect();
 }
 
-void ofApp::update() {}
-void ofApp::draw() {}
-
 void ofApp::onOnline(){
   ofLog() << "online";
 
