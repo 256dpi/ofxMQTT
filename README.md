@@ -46,3 +46,5 @@ void ofApp::keyPressed(int key){
   client.publish("hello", "world");
 }
 ```
+
+The corresponding header file can be found [here](https://github.com/256dpi/ofxMQTT/blob/master/example-ofxMQTT/src/ofApp.h).
