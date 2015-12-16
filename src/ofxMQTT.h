@@ -6,7 +6,7 @@ struct ofxMQTTMessage {
 	string payload;
 };
 
-class ofxMQTT : private ofThread {
+class ofxMQTT {
 private:
   struct mosquitto *mosq;
   bool alive = false;
@@ -18,10 +18,6 @@ private:
   string password;
   string willTopic;
   string willPayload;
-
-  void threadedFunction();
-  void start();
-  void stop();
 
   int mid = 0;
   int nextMid();
@@ -39,6 +35,7 @@ public:
   void publish(string topic, string payload);
   void subscribe(string topic);
   void unsubscribe(string topic);
+  void update();
   bool connected();
   void disconnect();
 
