@@ -24,6 +24,10 @@ void ofApp::setup(){
   ofAddListener(client.onMessage, this, &ofApp::onMessage);
 }
 
+void ofApp::update() {
+  client.update();
+}
+
 void ofApp::exit(){
   client.disconnect();
 }
