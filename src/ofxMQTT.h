@@ -32,8 +32,8 @@ public:
   bool connect(string clientId);
   bool connect(string clientId, string username, string password);
   void publish(string topic);
-  void publish(string topic, string payload);
-  void subscribe(string topic);
+  void publish(string topic, string payload, int qos = 0);
+  void subscribe(string topic, int qos = 0);
   void unsubscribe(string topic);
   void update();
   bool connected();
