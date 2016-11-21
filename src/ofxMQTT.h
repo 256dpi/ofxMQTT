@@ -31,7 +31,7 @@ public:
   void setWill(string topic, string payload);
   bool connect(string clientId);
   bool connect(string clientId, string username, string password);
-  void publish(string topic);
+  void publish(string topic, int qos = 0);
   void publish(string topic, string payload, int qos = 0);
   void subscribe(string topic, int qos = 0);
   void unsubscribe(string topic);
