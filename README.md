@@ -8,7 +8,7 @@ The first release of the addon only supports QoS0 and the basic features to get 
 
 This addon is an alternative to [ofxMosquitto](https://github.com/hideyukisaito/ofxMosquitto) by @hideyukisaito which didn't get much attention lately.
 
-[Download version 1.0.0 of the addon.](https://github.com/256dpi/ofxMQTT/archive/v1.0.0.zip)
+[Download version 1.1.0 of the addon.](https://github.com/256dpi/ofxMQTT/archive/v1.1.0.zip)
 
 ## Example
 
