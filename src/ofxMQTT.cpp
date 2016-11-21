@@ -97,8 +97,8 @@ bool ofxMQTT::connect(string clientId, string username, string password) {
   return true;
 }
 
-void ofxMQTT::publish(string topic) {
-  publish(topic, "");
+void ofxMQTT::publish(string topic, int qos) {
+  publish(topic, "", qos);
 }
 
 void ofxMQTT::publish(string topic, string payload, int qos) {
