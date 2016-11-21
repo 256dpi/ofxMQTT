@@ -84,13 +84,13 @@ Publishes a message to the broker with an optional payload:
 
 ```c++
 void publish(string topic);
-void publish(string topic, string payload);
+void publish(string topic, string payload, int qos = 0);
 ```
 
 Subscribe to a topic:
 
 ```c++
-void subscribe(string topic);
+void subscribe(string topic, int qos = 0);
 ```
 
 Unsubscribe from a topic:
