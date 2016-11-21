@@ -83,7 +83,7 @@ _This functions returns a value that indicates if the connection has been establ
 Publishes a message to the broker with an optional payload:
 
 ```c++
-void publish(string topic);
+void publish(string topic, int qos = 0);
 void publish(string topic, string payload, int qos = 0);
 ```
 
