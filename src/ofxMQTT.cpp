@@ -101,14 +101,14 @@ void ofxMQTT::publish(string topic) {
   publish(topic, "");
 }
 
-void ofxMQTT::publish(string topic, string payload) {
+void ofxMQTT::publish(string topic, string payload, int qos) {
   int mid = nextMid();
-  mosquitto_publish(mosq, &mid, topic.c_str(), (int)payload.length(), payload.c_str(), 0, false);
+  mosquitto_publish(mosq, &mid, topic.c_str(), (int)payload.length(), payload.c_str(), qos, false);
 }
 
-void ofxMQTT::subscribe(string topic) {
+void ofxMQTT::subscribe(string topic, int qos) {
   int mid = nextMid();
-  mosquitto_subscribe(mosq, &mid, topic.c_str(), 0);
+  mosquitto_subscribe(mosq, &mid, topic.c_str(), qos);
 }
 
 void ofxMQTT::unsubscribe(string topic) {
