@@ -97,13 +97,13 @@ bool ofxMQTT::connect(string clientId, string username, string password) {
   return true;
 }
 
-void ofxMQTT::publish(string topic, int qos) {
-  publish(topic, "", qos);
+void ofxMQTT::publish(string topic, int qos, bool retain) {
+  publish(topic, "", qos,retain);
 }
 
-void ofxMQTT::publish(string topic, string payload, int qos) {
+void ofxMQTT::publish(string topic, string payload, int qos, bool retain) {
   int mid = nextMid();
-  mosquitto_publish(mosq, &mid, topic.c_str(), (int)payload.length(), payload.c_str(), qos, false);
+  mosquitto_publish(mosq, &mid, topic.c_str(), (int)payload.length(), payload.c_str(), qos, retain);
 }
 
 void ofxMQTT::subscribe(string topic, int qos) {
