@@ -6,7 +6,7 @@ rm -rf ./libs/mosquitto
 mkdir -p ./libs/mosquitto/src
 
 echo "clone mosquitto library"
-git clone http://git.eclipse.org/gitroot/mosquitto/org.eclipse.mosquitto.git ./mosquitto
+git clone https://github.com/eclipse/mosquitto.git ./mosquitto
 
 echo "copy mosquitto files"
 cp ./mosquitto/config.h ./libs/mosquitto/src/config.h
