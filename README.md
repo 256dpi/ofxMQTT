@@ -8,7 +8,7 @@ The first release of the addon only supports QoS0 and the basic features to get 
 
 This addon is an alternative to [ofxMosquitto](https://github.com/hideyukisaito/ofxMosquitto) by @hideyukisaito which didn't get much attention lately.
 
-[Download version 1.1.0 of the addon.](https://github.com/256dpi/ofxMQTT/archive/v1.1.0.zip)
+[Download the latest version of the addon.](https://github.com/256dpi/ofxMQTT/releases/latest)
 
 ## Example
 
@@ -83,8 +83,8 @@ _This functions returns a value that indicates if the connection has been establ
 Publishes a message to the broker with an optional payload:
 
 ```c++
-void publish(string topic, int qos = 0);
-void publish(string topic, string payload, int qos = 0);
+void publish(string topic, int qos = 0, retain = false);
+void publish(string topic, string payload, int qos = 0, retain = false);
 ```
 
 Subscribe to a topic:
