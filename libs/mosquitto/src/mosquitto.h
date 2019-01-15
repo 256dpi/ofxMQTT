@@ -25,7 +25,8 @@ extern "C" {
 #	ifdef libmosquitto_EXPORTS
 #		define libmosq_EXPORT  __declspec(dllexport)
 #	else
-#		define libmosq_EXPORT  __declspec(dllimport)
+#		//define libmosq_EXPORT  __declspec(dllimport)
+#		define libmosq_EXPORT  
 #	endif
 #else
 #	define libmosq_EXPORT

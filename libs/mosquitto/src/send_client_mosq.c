@@ -69,7 +69,7 @@ int _mosquitto_send_connect(struct mosquitto *mosq, uint16_t keepalive, bool cle
 		return MOSQ_ERR_INVAL;
 	}
 
-	packet = _mosquitto_calloc(1, sizeof(struct _mosquitto_packet));
+	packet = (_mosquitto_packet *) _mosquitto_calloc(1, sizeof(struct _mosquitto_packet));
 	if(!packet) return MOSQ_ERR_NOMEM;
 
 	payloadlen = 2+strlen(clientid);
@@ -168,7 +168,7 @@ int _mosquitto_send_subscribe(struct mosquitto *mosq, int *mid, const char *topi
 	assert(mosq);
 	assert(topic);
 
-	packet = _mosquitto_calloc(1, sizeof(struct _mosquitto_packet));
+	packet = (_mosquitto_packet*) _mosquitto_calloc(1, sizeof(struct _mosquitto_packet));
 	if(!packet) return MOSQ_ERR_NOMEM;
 
 	packetlen = 2 + 2+strlen(topic) + 1;
@@ -213,7 +213,7 @@ int _mosquitto_send_unsubscribe(struct mosquitto *mosq, int *mid, const char *to
 	assert(mosq);
 	assert(topic);
 
-	packet = _mosquitto_calloc(1, sizeof(struct _mosquitto_packet));
+	packet = (_mosquitto_packet*) _mosquitto_calloc(1, sizeof(struct _mosquitto_packet));
 	if(!packet) return MOSQ_ERR_NOMEM;
 
 	packetlen = 2 + 2+strlen(topic);

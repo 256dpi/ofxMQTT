@@ -12,7 +12,8 @@
  * Generally for Windows native support.
  * ============================================================ */
 #ifdef WIN32
-#define snprintf sprintf_s
+#define _CRT_SECURE_NO_WARNINGS
+//#define snprintf sprintf_s
 #  ifndef strcasecmp
 #    define strcasecmp strcmpi
 #  endif

@@ -609,7 +609,7 @@ int _mosquitto_read_string(struct _mosquitto_packet *packet, char **str)
 
 	if(packet->pos+len > packet->remaining_length) return MOSQ_ERR_PROTOCOL;
 
-	*str = _mosquitto_malloc(len+1);
+	*str = (char *) _mosquitto_malloc(len+1);
 	if(*str){
 		memcpy(*str, &(packet->payload[packet->pos]), len);
 		(*str)[len] = '\0';
@@ -691,7 +691,7 @@ ssize_t _mosquitto_net_read(struct mosquitto *mosq, void *buf, size_t count)
 #ifndef WIN32
 	return read(mosq->sock, buf, count);
 #else
-	return recv(mosq->sock, buf, count, 0);
+	return recv(mosq->sock, (char *) buf, count, 0);
 #endif
 
 #ifdef WITH_TLS
@@ -740,7 +740,7 @@ ssize_t _mosquitto_net_write(struct mosquitto *mosq, void *buf, size_t count)
 #ifndef WIN32
 	return write(mosq->sock, buf, count);
 #else
-	return send(mosq->sock, buf, count, 0);
+	return send(mosq->sock, (char *) buf, count, 0);
 #endif
 
 #ifdef WITH_TLS
@@ -983,7 +983,7 @@ int _mosquitto_packet_read(struct mosquitto *mosq)
 		mosq->in_packet.remaining_count *= -1;
 
 		if(mosq->in_packet.remaining_length > 0){
-			mosq->in_packet.payload = _mosquitto_malloc(mosq->in_packet.remaining_length*sizeof(uint8_t));
+			mosq->in_packet.payload = (uint8_t*) _mosquitto_malloc(mosq->in_packet.remaining_length*sizeof(uint8_t));
 			if(!mosq->in_packet.payload) return MOSQ_ERR_NOMEM;
 			mosq->in_packet.to_process = mosq->in_packet.remaining_length;
 		}

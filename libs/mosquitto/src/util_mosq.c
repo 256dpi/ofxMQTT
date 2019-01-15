@@ -64,7 +64,7 @@ int _mosquitto_packet_alloc(struct _mosquitto_packet *packet)
 #ifdef WITH_WEBSOCKETS
 	packet->payload = _mosquitto_malloc(sizeof(uint8_t)*packet->packet_length + LWS_SEND_BUFFER_PRE_PADDING + LWS_SEND_BUFFER_POST_PADDING);
 #else
-	packet->payload = _mosquitto_malloc(sizeof(uint8_t)*packet->packet_length);
+	packet->payload = (uint8_t *) _mosquitto_malloc(sizeof(uint8_t)*packet->packet_length);
 #endif
 	if(!packet->payload) return MOSQ_ERR_NOMEM;
 
@@ -318,9 +318,9 @@ int _mosquitto_hex2bin(const char *hex, unsigned char *bin, int bin_max_len)
 FILE *_mosquitto_fopen(const char *path, const char *mode)
 {
 #ifdef WIN32
-	char buf[4096];
+	char buf[8192];
 	int rc;
-	rc = ExpandEnvironmentStrings(path, buf, 4096);
+	rc = ExpandEnvironmentStrings((LPCWSTR) path, (LPWSTR) buf, 4096);
 	if(rc == 0 || rc > 4096){
 		return NULL;
 	}else{

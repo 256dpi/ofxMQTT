@@ -203,7 +203,7 @@ int _mosquitto_send_command_with_mid(struct mosquitto *mosq, uint8_t command, ui
 	int rc;
 
 	assert(mosq);
-	packet = _mosquitto_calloc(1, sizeof(struct _mosquitto_packet));
+	packet = (_mosquitto_packet*) _mosquitto_calloc(1, sizeof(struct _mosquitto_packet));
 	if(!packet) return MOSQ_ERR_NOMEM;
 
 	packet->command = command;
@@ -230,7 +230,7 @@ int _mosquitto_send_simple_command(struct mosquitto *mosq, uint8_t command)
 	int rc;
 
 	assert(mosq);
-	packet = _mosquitto_calloc(1, sizeof(struct _mosquitto_packet));
+	packet = (_mosquitto_packet*) _mosquitto_calloc(1, sizeof(struct _mosquitto_packet));
 	if(!packet) return MOSQ_ERR_NOMEM;
 
 	packet->command = command;
@@ -256,7 +256,7 @@ int _mosquitto_send_real_publish(struct mosquitto *mosq, uint16_t mid, const cha
 
 	packetlen = 2+strlen(topic) + payloadlen;
 	if(qos > 0) packetlen += 2; /* For message id */
-	packet = _mosquitto_calloc(1, sizeof(struct _mosquitto_packet));
+	packet = (_mosquitto_packet*) _mosquitto_calloc(1, sizeof(struct _mosquitto_packet));
 	if(!packet) return MOSQ_ERR_NOMEM;
 
 	packet->mid = mid;

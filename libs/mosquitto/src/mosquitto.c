@@ -576,7 +576,7 @@ int mosquitto_publish(struct mosquitto *mosq, int *mid, const char *topic, int p
 	if(qos == 0){
 		return _mosquitto_send_publish(mosq, local_mid, topic, payloadlen, payload, qos, retain, false);
 	}else{
-		message = _mosquitto_calloc(1, sizeof(struct mosquitto_message_all));
+		message = (mosquitto_message_all*) _mosquitto_calloc(1, sizeof(struct mosquitto_message_all));
 		if(!message) return MOSQ_ERR_NOMEM;
 
 		message->next = NULL;
@@ -1368,7 +1368,7 @@ int mosquitto_sub_topic_tokenise(const char *subtopic, char ***topics, int *coun
 		}
 	}
 
-	(*topics) = _mosquitto_calloc(hier_count, sizeof(char *));
+	(*topics) = (char **) _mosquitto_calloc(hier_count, sizeof(char *));
 	if(!(*topics)) return MOSQ_ERR_NOMEM;
 
 	start = 0;
@@ -1380,7 +1380,7 @@ int mosquitto_sub_topic_tokenise(const char *subtopic, char ***topics, int *coun
 			stop = i;
 			if(start != stop){
 				tlen = stop-start + 1;
-				(*topics)[hier] = _mosquitto_calloc(tlen, sizeof(char));
+				(*topics)[hier] = (char *) _mosquitto_calloc(tlen, sizeof(char));
 				if(!(*topics)[hier]){
 					for(i=0; i<hier_count; i++){
 						if((*topics)[hier]){

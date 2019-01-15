@@ -70,7 +70,7 @@ int _mosquitto_handle_publish(struct mosquitto *mosq)
 
 	assert(mosq);
 
-	message = _mosquitto_calloc(1, sizeof(struct mosquitto_message_all));
+	message = (mosquitto_message_all*) _mosquitto_calloc(1, sizeof(struct mosquitto_message_all));
 	if(!message) return MOSQ_ERR_NOMEM;
 
 	header = mosq->in_packet.command;
