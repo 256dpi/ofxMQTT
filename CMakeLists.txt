@@ -10,10 +10,15 @@ include_directories(
     /Users/256dpi/Development/openframeworks/libs/openFrameworks/types
     /Users/256dpi/Development/openframeworks/libs/openFrameworks/utils
     libs/mosquitto/src/
+    src/
 )
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 
-set(SOURCE_FILES src/ofxMQTT.cpp)
+set(SOURCE_FILES
+        src/ofxMQTT.cpp
+        example-ofxMQTT/src/main.cpp
+        example-ofxMQTT/src/ofApp.cpp
+        example-ofxMQTT/src/ofApp.h)
 
 add_executable(ofxMQTT ${SOURCE_FILES})
