@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2011-2014 Roger Light <roger@atchoo.org>
+Copyright (c) 2011-2018 Roger Light <roger@atchoo.org>
 
 All rights reserved. This program and the accompanying materials
 are made available under the terms of the Eclipse Public License v1.0
@@ -14,25 +14,28 @@ Contributors:
    Roger Light - initial implementation and documentation.
 */
 
-#include <config.h>
+#include "config.h"
 
 #ifndef WIN32
-#include <unistd.h>
+#include <time.h>
 #endif
 
-#include <mosquitto_internal.h>
-#include <net_mosq.h>
+#include "mosquitto_internal.h"
+#include "net_mosq.h"
 
-void *_mosquitto_thread_main(void *obj);
+void *mosquitto__thread_main(void *obj);
 
 int mosquitto_loop_start(struct mosquitto *mosq)
 {
 #ifdef WITH_THREADING
-	if(!mosq || mosq->threaded) return MOSQ_ERR_INVAL;
+	if(!mosq || mosq->threaded != mosq_ts_none) return MOSQ_ERR_INVAL;
 
-	mosq->threaded = true;
-	pthread_create(&mosq->thread_id, NULL, _mosquitto_thread_main, mosq);
-	return MOSQ_ERR_SUCCESS;
+	mosq->threaded = mosq_ts_self;
+	if(!pthread_create(&mosq->thread_id, NULL, mosquitto__thread_main, mosq)){
+		return MOSQ_ERR_SUCCESS;
+	}else{
+		return MOSQ_ERR_ERRNO;
+	}
 #else
 	return MOSQ_ERR_NOT_SUPPORTED;
 #endif
@@ -45,7 +48,7 @@ int mosquitto_loop_stop(struct mosquitto *mosq, bool force)
 	char sockpair_data = 0;
 #  endif
 
-	if(!mosq || !mosq->threaded) return MOSQ_ERR_INVAL;
+	if(!mosq || mosq->threaded != mosq_ts_self) return MOSQ_ERR_INVAL;
 
 
 	/* Write a single byte to sockpairW (connected to sockpairR) to break out
@@ -64,7 +67,7 @@ int mosquitto_loop_stop(struct mosquitto *mosq, bool force)
 	}
 	pthread_join(mosq->thread_id, NULL);
 	mosq->thread_id = pthread_self();
-	mosq->threaded = false;
+	mosq->threaded = mosq_ts_none;
 
 	return MOSQ_ERR_SUCCESS;
 #else
@@ -73,18 +76,35 @@ int mosquitto_loop_stop(struct mosquitto *mosq, bool force)
 }
 
 #ifdef WITH_THREADING
-void *_mosquitto_thread_main(void *obj)
+void *mosquitto__thread_main(void *obj)
 {
 	struct mosquitto *mosq = obj;
+	int state;
+#ifndef WIN32
+	struct timespec ts;
+	ts.tv_sec = 0;
+	ts.tv_nsec = 10000000;
+#endif
 
 	if(!mosq) return NULL;
 
-	pthread_mutex_lock(&mosq->state_mutex);
-	if(mosq->state == mosq_cs_connect_async){
+	do{
+		pthread_mutex_lock(&mosq->state_mutex);
+		state = mosq->state;
 		pthread_mutex_unlock(&mosq->state_mutex);
+		if(state == mosq_cs_new){
+#ifdef WIN32
+			Sleep(10);
+#else
+			nanosleep(&ts, NULL);
+#endif
+		}else{
+			break;
+		}
+	}while(1);
+
+	if(state == mosq_cs_connect_async){
 		mosquitto_reconnect(mosq);
-	}else{
-		pthread_mutex_unlock(&mosq->state_mutex);
 	}
 
 	if(!mosq->keepalive){
@@ -103,7 +123,11 @@ int mosquitto_threaded_set(struct mosquitto *mosq, bool threaded)
 {
 	if(!mosq) return MOSQ_ERR_INVAL;
 
-	mosq->threaded = threaded;
+	if(threaded){
+		mosq->threaded = mosq_ts_external;
+	}else{
+		mosq->threaded = mosq_ts_none;
+	}
 
 	return MOSQ_ERR_SUCCESS;
 }
