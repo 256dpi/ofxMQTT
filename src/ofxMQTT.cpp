@@ -2,18 +2,18 @@
 
 /* mosquitto */
 
-static void on_connect_wrapper(struct mosquitto *_, void *userdata, int rc) {
-  class ofxMQTT *m = (class ofxMQTT *)userdata;
+static void on_connect_wrapper(struct mosquitto *, void *userData, int rc) {
+  auto *m = (class ofxMQTT *)userData;
   m->_on_connect(rc);
 }
 
-static void on_disconnect_wrapper(struct mosquitto *_, void *userdata, int rc) {
-  class ofxMQTT *m = (class ofxMQTT *)userdata;
+static void on_disconnect_wrapper(struct mosquitto *, void *userData, int rc) {
+  auto *m = (class ofxMQTT *)userData;
   m->_on_disconnect(rc);
 }
 
-static void on_message_wrapper(struct mosquitto *_, void *userdata, const struct mosquitto_message *message) {
-  class ofxMQTT *m = (class ofxMQTT *)userdata;
+static void on_message_wrapper(struct mosquitto *, void *userData, const struct mosquitto_message *message) {
+  auto *m = (class ofxMQTT *)userData;
   m->_on_message(message);
 }
 
@@ -146,7 +146,7 @@ void ofxMQTT::_on_connect(int rc) {
   }
 }
 
-void ofxMQTT::_on_disconnect(int _) {
+void ofxMQTT::_on_disconnect(int /*rc*/) {
   alive = false;
   ofNotifyEvent(onOffline, this);
 }
