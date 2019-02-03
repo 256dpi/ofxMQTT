@@ -37,7 +37,7 @@ int log__printf(struct mosquitto *mosq, int priority, const char *fmt, ...)
 	pthread_mutex_lock(&mosq->log_callback_mutex);
 	if(mosq->on_log){
 		len = strlen(fmt) + 500;
-		s = mosquitto__malloc(len*sizeof(char));
+		s = (char*) mosquitto__malloc(len*sizeof(char));
 		if(!s){
 			pthread_mutex_unlock(&mosq->log_callback_mutex);
 			return MOSQ_ERR_NOMEM;

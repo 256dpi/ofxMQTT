@@ -51,7 +51,7 @@ int mosquitto_publish(struct mosquitto *mosq, int *mid, const char *topic, int p
 	if(qos == 0){
 		return send__publish(mosq, local_mid, topic, payloadlen, payload, qos, retain, false);
 	}else{
-		message = mosquitto__calloc(1, sizeof(struct mosquitto_message_all));
+		message = (mosquitto_message_all*)mosquitto__calloc(1, sizeof(struct mosquitto_message_all));
 		if(!message) return MOSQ_ERR_NOMEM;
 
 		message->next = NULL;

@@ -75,6 +75,7 @@ bool ofxMQTT::connect(string clientId, string username, string password) {
   this->password = password;
 
   mosquitto_reinitialise(mosq, this->clientId.c_str(), true, this);
+  mosquitto_opts_set(mosq, MOSQ_OPT_PROTOCOL_VERSION, &protocol);	// set protocol
   mosquitto_connect_callback_set(mosq, on_connect_wrapper);
   mosquitto_disconnect_callback_set(mosq, on_disconnect_wrapper);
   mosquitto_message_callback_set(mosq, on_message_wrapper);
@@ -136,6 +137,16 @@ void ofxMQTT::disconnect() {
   mosquitto_disconnect(mosq);
 }
 
+void ofxMQTT::setProtocol(int p)
+{
+	protocol = p;
+}
+
+int ofxMQTT::getProtocol()
+{
+	return protocol;
+}
+
 void ofxMQTT::_on_connect(int rc) {
   alive = (rc == MOSQ_ERR_SUCCESS);
 
@@ -152,7 +163,7 @@ void ofxMQTT::_on_disconnect(int /*rc*/) {
 }
 
 void ofxMQTT::_on_message(const struct mosquitto_message *message) {
-  string payload((char*)message->payload, (uint)message->payloadlen);
+  string payload((char*)message->payload, (unsigned int)message->payloadlen);
 
   ofxMQTTMessage msg;
   msg.topic = message->topic;

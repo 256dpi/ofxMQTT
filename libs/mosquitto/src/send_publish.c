@@ -139,7 +139,7 @@ int send__real_publish(struct mosquitto *mosq, uint16_t mid, const char *topic, 
 
 	packetlen = 2+strlen(topic) + payloadlen;
 	if(qos > 0) packetlen += 2; /* For message id */
-	packet = mosquitto__calloc(1, sizeof(struct mosquitto__packet));
+	packet = (mosquitto__packet*) mosquitto__calloc(1, sizeof(struct mosquitto__packet));
 	if(!packet) return MOSQ_ERR_NOMEM;
 
 	packet->mid = mid;

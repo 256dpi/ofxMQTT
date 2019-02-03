@@ -712,7 +712,7 @@ ssize_t net__read(struct mosquitto *mosq, void *buf, size_t count)
 #ifndef WIN32
 	return read(mosq->sock, buf, count);
 #else
-	return recv(mosq->sock, buf, count, 0);
+	return recv(mosq->sock,(char*) buf, count, 0);
 #endif
 
 #ifdef WITH_TLS
@@ -759,7 +759,7 @@ ssize_t net__write(struct mosquitto *mosq, void *buf, size_t count)
 #ifndef WIN32
 	return write(mosq->sock, buf, count);
 #else
-	return send(mosq->sock, buf, count, 0);
+	return send(mosq->sock, (char*) buf, count, 0);
 #endif
 
 #ifdef WITH_TLS

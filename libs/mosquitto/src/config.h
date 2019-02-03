@@ -26,6 +26,10 @@
 #endif
 
 #ifdef WIN32
+
+//disable warning about unsecure std lib
+#define  _CRT_SECURE_NO_WARNINGS 
+
 #  ifndef strcasecmp
 #    define strcasecmp strcmpi
 #  endif

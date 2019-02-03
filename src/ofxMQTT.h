@@ -18,6 +18,8 @@ private:
   string password;
   string willTopic;
   string willPayload;
+  
+  int protocol = MQTT_PROTOCOL_V311; // must set to MQTT_PROTOCOL_V31/MQTT_PROTOCOL_V311 before call to connect ()
 
   int mid = 0;
   int nextMid();
@@ -38,6 +40,9 @@ public:
   void update();
   bool connected();
   void disconnect();
+
+  void setProtocol(int p);
+  int  getProtocol();
 
   ofEvent<void> onOnline;
   ofEvent<ofxMQTTMessage> onMessage;

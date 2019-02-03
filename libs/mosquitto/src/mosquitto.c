@@ -420,7 +420,7 @@ int mosquitto_sub_topic_tokenise(const char *subtopic, char ***topics, int *coun
 		}
 	}
 
-	(*topics) = mosquitto__calloc(hier_count, sizeof(char *));
+	(*topics) = (char**) mosquitto__calloc(hier_count, sizeof(char *));
 	if(!(*topics)) return MOSQ_ERR_NOMEM;
 
 	start = 0;
@@ -432,7 +432,7 @@ int mosquitto_sub_topic_tokenise(const char *subtopic, char ***topics, int *coun
 			stop = i;
 			if(start != stop){
 				tlen = stop-start + 1;
-				(*topics)[hier] = mosquitto__calloc(tlen, sizeof(char));
+				(*topics)[hier] = (char*) mosquitto__calloc(tlen, sizeof(char));
 				if(!(*topics)[hier]){
 					for(j=0; j<hier; j++){
 						mosquitto__free((*topics)[j]);

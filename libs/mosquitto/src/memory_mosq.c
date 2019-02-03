@@ -155,7 +155,12 @@ char *mosquitto__strdup(const char *s)
 		return NULL;
 	}
 #endif
+
+#ifdef WIN32
+	char *str = _strdup(s);
+#else
 	char *str = strdup(s);
+#endif
 
 #ifdef REAL_WITH_MEMORY_TRACKING
 	if(str){

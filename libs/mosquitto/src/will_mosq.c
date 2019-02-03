@@ -51,7 +51,7 @@ int will__set(struct mosquitto *mosq, const char *topic, int payloadlen, const v
 		mosquitto__free(mosq->will);
 	}
 
-	mosq->will = mosquitto__calloc(1, sizeof(struct mosquitto_message));
+	mosq->will = (mosquitto_message*) mosquitto__calloc(1, sizeof(struct mosquitto_message));
 	if(!mosq->will) return MOSQ_ERR_NOMEM;
 	mosq->will->topic = mosquitto__strdup(topic);
 	if(!mosq->will->topic){

@@ -42,7 +42,7 @@ int send__unsubscribe(struct mosquitto *mosq, int *mid, const char *topic)
 	assert(mosq);
 	assert(topic);
 
-	packet = mosquitto__calloc(1, sizeof(struct mosquitto__packet));
+	packet = (mosquitto__packet*) mosquitto__calloc(1, sizeof(struct mosquitto__packet));
 	if(!packet) return MOSQ_ERR_NOMEM;
 
 	packetlen = 2 + 2+strlen(topic);

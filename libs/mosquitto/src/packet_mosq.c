@@ -69,7 +69,7 @@ int packet__alloc(struct mosquitto__packet *packet)
 #ifdef WITH_WEBSOCKETS
 	packet->payload = mosquitto__malloc(sizeof(uint8_t)*packet->packet_length + LWS_SEND_BUFFER_PRE_PADDING + LWS_SEND_BUFFER_POST_PADDING);
 #else
-	packet->payload = mosquitto__malloc(sizeof(uint8_t)*packet->packet_length);
+	packet->payload = (uint8_t*) mosquitto__malloc(sizeof(uint8_t)*packet->packet_length);
 #endif
 	if(!packet->payload) return MOSQ_ERR_NOMEM;
 
@@ -205,7 +205,7 @@ int packet__read_string(struct mosquitto__packet *packet, char **str, int *lengt
 
 	if(packet->pos+slen > packet->remaining_length) return MOSQ_ERR_PROTOCOL;
 
-	*str = mosquitto__malloc(slen+1);
+	*str = (char*) mosquitto__malloc(slen+1);
 	if(*str){
 		memcpy(*str, &(packet->payload[packet->pos]), slen);
 		(*str)[slen] = '\0';
@@ -481,7 +481,7 @@ int packet__read(struct mosquitto *mosq)
 		mosq->in_packet.remaining_count *= -1;
 
 		if(mosq->in_packet.remaining_length > 0){
-			mosq->in_packet.payload = mosquitto__malloc(mosq->in_packet.remaining_length*sizeof(uint8_t));
+			mosq->in_packet.payload = (uint8_t*) mosquitto__malloc(mosq->in_packet.remaining_length*sizeof(uint8_t));
 			if(!mosq->in_packet.payload) return MOSQ_ERR_NOMEM;
 			mosq->in_packet.to_process = mosq->in_packet.remaining_length;
 		}
