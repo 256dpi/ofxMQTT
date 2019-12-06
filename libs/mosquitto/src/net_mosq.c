@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2009-2018 Roger Light <roger@atchoo.org>
+Copyright (c) 2009-2019 Roger Light <roger@atchoo.org>
 
 All rights reserved. This program and the accompanying materials
 are made available under the terms of the Eclipse Public License v1.0
@@ -87,9 +87,11 @@ int net__init(void)
 #endif
 
 #ifdef WITH_TLS
+#  if OPENSSL_VERSION_NUMBER < 0x10100000L
 	SSL_load_error_strings();
 	SSL_library_init();
 	OpenSSL_add_all_algorithms();
+#  endif
 	if(tls_ex_index_mosq == -1){
 		tls_ex_index_mosq = SSL_get_ex_new_index(0, "client context", NULL, NULL, NULL);
 	}
@@ -100,16 +102,18 @@ int net__init(void)
 void net__cleanup(void)
 {
 #ifdef WITH_TLS
-	#if OPENSSL_VERSION_NUMBER < 0x10100000L
-		ERR_remove_state(0);
-	#endif
-	#ifndef OPENSSL_NO_ENGINE
-		ENGINE_cleanup();
-	#endif
-	CONF_modules_unload(1);
-	ERR_free_strings();
-	EVP_cleanup();
+#  if OPENSSL_VERSION_NUMBER < 0x10100000L
 	CRYPTO_cleanup_all_ex_data();
+	ERR_free_strings();
+	ERR_remove_thread_state(NULL);
+	EVP_cleanup();
+
+#    if !defined(OPENSSL_NO_ENGINE)
+	ENGINE_cleanup();
+#    endif
+#  endif
+
+	CONF_modules_unload(1);
 #endif
 
 #ifdef WITH_SRV
@@ -145,10 +149,6 @@ int net__socket_close(struct mosquitto *mosq)
 			SSL_free(mosq->ssl);
 			mosq->ssl = NULL;
 		}
-		if(mosq->ssl_ctx){
-			SSL_CTX_free(mosq->ssl_ctx);
-			mosq->ssl_ctx = NULL;
-		}
 	}
 #endif
 
@@ -174,8 +174,6 @@ int net__socket_close(struct mosquitto *mosq)
 #ifdef WITH_BROKER
 	if(mosq->listener){
 		mosq->listener->client_count--;
-		assert(mosq->listener->client_count >= 0);
-		mosq->listener = NULL;
 	}
 #endif
 
@@ -606,7 +604,7 @@ static int net__init_ssl_ctx(struct mosquitto *mosq)
 #endif
 
 
-int net__socket_connect_step3(struct mosquitto *mosq, const char *host, uint16_t port, const char *bind_address, bool blocking)
+int net__socket_connect_step3(struct mosquitto *mosq, const char *host)
 {
 #ifdef WITH_TLS
 	BIO *bio;
@@ -667,8 +665,13 @@ int net__socket_connect(struct mosquitto *mosq, const char *host, uint16_t port,
 
 	mosq->sock = sock;
 
-	rc = net__socket_connect_step3(mosq, host, port, bind_address, blocking);
-	if(rc) return rc;
+#if defined(WITH_SOCKS) && !defined(WITH_BROKER)
+	if(!mosq->socks5_host)
+#endif
+	{
+		rc = net__socket_connect_step3(mosq, host);
+		if(rc) return rc;
+	}
 
 	return MOSQ_ERR_SUCCESS;
 }

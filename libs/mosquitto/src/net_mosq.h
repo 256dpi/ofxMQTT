@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2010-2018 Roger Light <roger@atchoo.org>
+Copyright (c) 2010-2019 Roger Light <roger@atchoo.org>
 
 All rights reserved. This program and the accompanying materials
 are made available under the terms of the Eclipse Public License v1.0
@@ -61,7 +61,7 @@ int net__socket_close(struct mosquitto *mosq);
 int net__try_connect(struct mosquitto *mosq, const char *host, uint16_t port, mosq_sock_t *sock, const char *bind_address, bool blocking);
 int net__try_connect_step1(struct mosquitto *mosq, const char *host);
 int net__try_connect_step2(struct mosquitto *mosq, uint16_t port, mosq_sock_t *sock);
-int net__socket_connect_step3(struct mosquitto *mosq, const char *host, uint16_t port, const char *bind_address, bool blocking);
+int net__socket_connect_step3(struct mosquitto *mosq, const char *host);
 int net__socket_nonblock(mosq_sock_t *sock);
 int net__socketpair(mosq_sock_t *sp1, mosq_sock_t *sp2);
 

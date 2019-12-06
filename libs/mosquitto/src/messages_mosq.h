@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2010-2018 Roger Light <roger@atchoo.org>
+Copyright (c) 2010-2019 Roger Light <roger@atchoo.org>
 
 All rights reserved. This program and the accompanying materials
 are made available under the terms of the Eclipse Public License v1.0
@@ -21,11 +21,11 @@ Contributors:
 
 void message__cleanup_all(struct mosquitto *mosq);
 void message__cleanup(struct mosquitto_message_all **message);
-int message__delete(struct mosquitto *mosq, uint16_t mid, enum mosquitto_msg_direction dir);
+int message__delete(struct mosquitto *mosq, uint16_t mid, enum mosquitto_msg_direction dir, int qos);
 int message__queue(struct mosquitto *mosq, struct mosquitto_message_all *message, enum mosquitto_msg_direction dir);
 void message__reconnect_reset(struct mosquitto *mosq);
-int message__remove(struct mosquitto *mosq, uint16_t mid, enum mosquitto_msg_direction dir, struct mosquitto_message_all **message);
+int message__remove(struct mosquitto *mosq, uint16_t mid, enum mosquitto_msg_direction dir, struct mosquitto_message_all **message, int qos);
 void message__retry_check(struct mosquitto *mosq);
-int message__out_update(struct mosquitto *mosq, uint16_t mid, enum mosquitto_msg_state state);
+int message__out_update(struct mosquitto *mosq, uint16_t mid, enum mosquitto_msg_state state, int qos);
 
 #endif

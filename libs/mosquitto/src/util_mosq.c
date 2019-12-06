@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2009-2018 Roger Light <roger@atchoo.org>
+Copyright (c) 2009-2019 Roger Light <roger@atchoo.org>
 
 All rights reserved. This program and the accompanying materials
 are made available under the terms of the Eclipse Public License v1.0
@@ -28,6 +28,9 @@ Contributors:
 #  include <sys/stat.h>
 #endif
 
+#ifdef WITH_TLS
+#  include <openssl/bn.h>
+#endif
 
 #ifdef WITH_BROKER
 #include "mosquitto_broker_internal.h"
@@ -86,11 +89,6 @@ int mosquitto__check_keepalive(struct mosquitto *mosq)
 			pthread_mutex_unlock(&mosq->msgtime_mutex);
 		}else{
 #ifdef WITH_BROKER
-			if(mosq->listener){
-				mosq->listener->client_count--;
-				assert(mosq->listener->client_count >= 0);
-			}
-			mosq->listener = NULL;
 			net__socket_close(db, mosq);
 #else
 			net__socket_close(mosq);
@@ -247,6 +245,7 @@ int mosquitto_topic_matches_sub2(const char *sub, size_t sublen, const char *top
 {
 	int spos, tpos;
 	bool multilevel_wildcard = false;
+	int i;
 
 	if(!result) return MOSQ_ERR_INVAL;
 	*result = false;
@@ -272,31 +271,10 @@ int mosquitto_topic_matches_sub2(const char *sub, size_t sublen, const char *top
 	tpos = 0;
 
 	while(spos < sublen && tpos <= topiclen){
-		if(sub[spos] == topic[tpos]){
-			if(tpos == topiclen-1){
-				/* Check for e.g. foo matching foo/# */
-				if(spos == sublen-3
-						&& sub[spos+1] == '/'
-						&& sub[spos+2] == '#'){
-					*result = true;
-					multilevel_wildcard = true;
-					return MOSQ_ERR_SUCCESS;
-				}
-			}
-			spos++;
-			tpos++;
-			if(spos == sublen && tpos == topiclen){
-				*result = true;
-				return MOSQ_ERR_SUCCESS;
-			}else if(tpos == topiclen && spos == sublen-1 && sub[spos] == '+'){
-				if(spos > 0 && sub[spos-1] != '/'){
-					return MOSQ_ERR_INVAL;
-				}
-				spos++;
-				*result = true;
-				return MOSQ_ERR_SUCCESS;
-			}
-		}else{
+		if(topic[tpos] == '+' || topic[tpos] == '#'){
+			return MOSQ_ERR_INVAL;
+		}
+		if(tpos == topiclen || sub[spos] != topic[tpos]){ /* Check for wildcard matches */
 			if(sub[spos] == '+'){
 				/* Check for bad "+foo" or "a/+foo" subscription */
 				if(spos > 0 && sub[spos-1] != '/'){
@@ -338,6 +316,39 @@ int mosquitto_topic_matches_sub2(const char *sub, size_t sublen, const char *top
 					multilevel_wildcard = true;
 					return MOSQ_ERR_SUCCESS;
 				}
+
+				for(i=spos; i<sublen; i++){
+					if(sub[i] == '#' && i+1 != sublen){
+						return MOSQ_ERR_INVAL;
+					}
+				}
+
+				/* Valid input, but no match */
+				return MOSQ_ERR_SUCCESS;
+			}
+		}else{
+			/* sub[spos] == topic[tpos] */
+			if(tpos == topiclen-1){
+				/* Check for e.g. foo matching foo/# */
+				if(spos == sublen-3
+						&& sub[spos+1] == '/'
+						&& sub[spos+2] == '#'){
+					*result = true;
+					multilevel_wildcard = true;
+					return MOSQ_ERR_SUCCESS;
+				}
+			}
+			spos++;
+			tpos++;
+			if(spos == sublen && tpos == topiclen){
+				*result = true;
+				return MOSQ_ERR_SUCCESS;
+			}else if(tpos == topiclen && spos == sublen-1 && sub[spos] == '+'){
+				if(spos > 0 && sub[spos-1] != '/'){
+					return MOSQ_ERR_INVAL;
+				}
+				spos++;
+				*result = true;
 				return MOSQ_ERR_SUCCESS;
 			}
 		}
@@ -401,6 +412,21 @@ FILE *mosquitto__fopen(const char *path, const char *mode, bool restrict_read)
 			char username[UNLEN + 1];
 			int ulen = UNLEN;
 			SECURITY_DESCRIPTOR sd;
+			DWORD dwCreationDisposition;
+
+			switch(mode[0]){
+				case 'a':
+					dwCreationDisposition = OPEN_ALWAYS;
+					break;
+				case 'r':
+					dwCreationDisposition = OPEN_EXISTING;
+					break;
+				case 'w':
+					dwCreationDisposition = CREATE_ALWAYS;
+					break;
+				default:
+					return NULL;
+			}
 
 			GetUserName(username, &ulen);
 			if (!InitializeSecurityDescriptor(&sd, SECURITY_DESCRIPTOR_REVISION)) {
@@ -421,7 +447,7 @@ FILE *mosquitto__fopen(const char *path, const char *mode, bool restrict_read)
 
 			hfile = CreateFile(buf, GENERIC_READ | GENERIC_WRITE, 0,
 				&sec,
-				CREATE_NEW,
+				dwCreationDisposition,
 				FILE_ATTRIBUTE_NORMAL,
 				NULL);
 

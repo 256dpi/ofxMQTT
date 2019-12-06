@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2010-2018 Roger Light <roger@atchoo.org>
+Copyright (c) 2010-2019 Roger Light <roger@atchoo.org>
 
 All rights reserved. This program and the accompanying materials
 are made available under the terms of the Eclipse Public License v1.0
@@ -46,6 +46,16 @@ int mosquitto_lib_init(void)
 {
 #ifdef WIN32
 	srand(GetTickCount64());
+#elif _POSIX_TIMERS>0 && defined(_POSIX_MONOTONIC_CLOCK)
+	struct timespec tp;
+
+	clock_gettime(CLOCK_MONOTONIC, &tp);
+	srand(tp.tv_nsec);
+#elif defined(__APPLE__)
+	uint64_t ticks;
+
+	ticks = mach_absolute_time();
+	srand((unsigned int)ticks);
 #else
 	struct timeval tv;
 

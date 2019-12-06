@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2009-2018 Roger Light <roger@atchoo.org>
+Copyright (c) 2009-2019 Roger Light <roger@atchoo.org>
 
 All rights reserved. This program and the accompanying materials
 are made available under the terms of the Eclipse Public License v1.0
@@ -141,7 +141,7 @@ int packet__queue(struct mosquitto *mosq, struct mosquitto__packet *packet)
 #endif
 	}
 
-	if(mosq->in_callback == false && mosq->threaded == false){
+	if(mosq->in_callback == false && mosq->threaded == mosq_ts_none){
 		return packet__write(mosq);
 	}else{
 		return MOSQ_ERR_SUCCESS;
