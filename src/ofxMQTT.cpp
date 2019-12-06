@@ -29,7 +29,7 @@ ofxMQTT::ofxMQTT() {
 }
 
 ofxMQTT::~ofxMQTT() {
-  if(alive) {
+  if (alive) {
     mosquitto_disconnect(mosq);
   }
 
@@ -37,37 +37,31 @@ ofxMQTT::~ofxMQTT() {
   mosquitto_lib_cleanup();
 }
 
-int ofxMQTT::nextMid(){
+int ofxMQTT::nextMid() {
   mid++;
 
-  if(mid > 65536) {
+  if (mid > 65536) {
     mid = 0;
   }
 
   return mid;
 }
 
-void ofxMQTT::begin(string hostname) {
-  begin(hostname, 1883);
-}
+void ofxMQTT::begin(string hostname) { begin(hostname, 1883); }
 
 void ofxMQTT::begin(string hostname, int port) {
   this->hostname = hostname;
   this->port = port;
 }
 
-void ofxMQTT::setWill(string topic) {
-  setWill(topic, "");
-}
+void ofxMQTT::setWill(string topic) { setWill(topic, ""); }
 
 void ofxMQTT::setWill(string topic, string payload) {
   this->willTopic = topic;
   this->willPayload = payload;
 }
 
-bool ofxMQTT::connect(string clientId) {
-  return connect(clientId, "", "");
-}
+bool ofxMQTT::connect(string clientId) { return connect(clientId, "", ""); }
 
 bool ofxMQTT::connect(string clientId, string username, string password) {
   this->clientId = clientId;
@@ -79,17 +73,17 @@ bool ofxMQTT::connect(string clientId, string username, string password) {
   mosquitto_disconnect_callback_set(mosq, on_disconnect_wrapper);
   mosquitto_message_callback_set(mosq, on_message_wrapper);
 
-  if(!this->username.empty() && !this->password.empty()) {
+  if (!this->username.empty() && !this->password.empty()) {
     mosquitto_username_pw_set(mosq, this->username.c_str(), this->password.c_str());
   }
 
-  if(!willTopic.empty() && !willPayload.empty()) {
+  if (!willTopic.empty() && !willPayload.empty()) {
     mosquitto_will_set(mosq, willTopic.c_str(), (int)willPayload.length(), willPayload.c_str(), 0, false);
   }
 
   int rc = mosquitto_connect(mosq, hostname.c_str(), port, 60);
 
-  if(rc != MOSQ_ERR_SUCCESS) {
+  if (rc != MOSQ_ERR_SUCCESS) {
     ofLogError("ofxMQTT") << "Connect error: " << mosquitto_strerror(rc);
     return false;
   }
@@ -97,9 +91,7 @@ bool ofxMQTT::connect(string clientId, string username, string password) {
   return true;
 }
 
-void ofxMQTT::publish(string topic, int qos, bool retain) {
-  publish(topic, "", qos,retain);
-}
+void ofxMQTT::publish(string topic, int qos, bool retain) { publish(topic, "", qos, retain); }
 
 void ofxMQTT::publish(string topic, string payload, int qos, bool retain) {
   int mid = nextMid();
@@ -128,18 +120,14 @@ void ofxMQTT::update() {
   }
 }
 
-bool ofxMQTT::connected() {
-  return alive;
-}
+bool ofxMQTT::connected() { return alive; }
 
-void ofxMQTT::disconnect() {
-  mosquitto_disconnect(mosq);
-}
+void ofxMQTT::disconnect() { mosquitto_disconnect(mosq); }
 
 void ofxMQTT::_on_connect(int rc) {
   alive = (rc == MOSQ_ERR_SUCCESS);
 
-  if(alive){
+  if (alive) {
     ofNotifyEvent(onOnline, this);
   } else {
     ofNotifyEvent(onOffline, this);
@@ -152,9 +140,9 @@ void ofxMQTT::_on_disconnect(int /*rc*/) {
 }
 
 void ofxMQTT::_on_message(const struct mosquitto_message *message) {
-  string payload((char*)message->payload, (uint)message->payloadlen);
+  string payload((char *)message->payload, (uint)message->payloadlen);
 
-  ofxMQTTMessage msg;
+  ofxMQTTMessage msg = {0};
   msg.topic = message->topic;
   msg.payload = payload;
 

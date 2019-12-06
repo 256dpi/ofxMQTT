@@ -1,13 +1,13 @@
-#include "ofMain.h"
 #include "mosquitto.h"
+#include "ofMain.h"
 
 struct ofxMQTTMessage {
   string topic;
-	string payload;
+  string payload;
 };
 
 class ofxMQTT {
-private:
+ private:
   struct mosquitto *mosq;
   bool alive = false;
 
@@ -21,7 +21,8 @@ private:
 
   int mid = 0;
   int nextMid();
-public:
+
+ public:
   ofxMQTT();
   ~ofxMQTT();
 

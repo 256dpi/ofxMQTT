@@ -16,3 +16,6 @@ update:
 
 	@echo "remove temporary files"
 	rm -rf ./mosquitto
+
+fmt:
+	clang-format -i src/*.h src/*.cpp -style="{BasedOnStyle: Google, ColumnLimit: 120}"
