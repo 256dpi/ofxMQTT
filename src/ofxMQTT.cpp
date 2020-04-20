@@ -142,7 +142,7 @@ void ofxMQTT::_on_disconnect(int /*rc*/) {
 void ofxMQTT::_on_message(const struct mosquitto_message *message) {
   string payload((char *)message->payload, (uint)message->payloadlen);
 
-  ofxMQTTMessage msg = {0};
+  ofxMQTTMessage msg; 
   msg.topic = message->topic;
   msg.payload = payload;
 
