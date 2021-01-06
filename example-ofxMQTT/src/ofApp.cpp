@@ -1,8 +1,8 @@
 #include "ofApp.h"
 
 void ofApp::setup(){
-  client.begin("broker.shiftr.io", 1883);
-  client.connect("openframeworks", "try", "try");
+  client.begin("public.cloud.shiftr.io", 1883);
+  client.connect("openframeworks", "public", "public");
 
   ofAddListener(client.onOnline, this, &ofApp::onOnline);
   ofAddListener(client.onOffline, this, &ofApp::onOffline);

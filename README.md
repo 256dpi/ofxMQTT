@@ -12,14 +12,14 @@ This addon is an alternative to [ofxMosquitto](https://github.com/hideyukisaito/
 
 ## Example
 
-The following example connects to shiftr.io. You can check on your app after a successful connection here: <https://shiftr.io/try>.
+The following example connects to the public shiftr.io instance. You can check on your app after a successful connection here: <https://www.shiftr.io/try>.
 
 ```c++
 #include "ofApp.h"
 
 void ofApp::setup(){
-  client.begin("broker.shiftr.io", 1883);
-  client.connect("openframeworks", "try", "try");
+  client.begin("public.cloud.shiftr.io", 1883);
+  client.connect("openframeworks", "public", "public");
 
   ofAddListener(client.onOnline, this, &ofApp::onOnline);
   ofAddListener(client.onOffline, this, &ofApp::onOffline);
