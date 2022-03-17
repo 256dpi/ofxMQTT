@@ -31,6 +31,9 @@ Contributors:
 #include "packet_mosq.h"
 #include "will_mosq.h"
 
+#if defined(__APPLE__)
+#include <mach/mach_time.h>
+#endif
 
 void mosquitto__destroy(struct mosquitto *mosq);
 
