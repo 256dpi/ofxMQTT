@@ -1,14 +1,16 @@
 /*
-Copyright (c) 2009-2019 Roger Light <roger@atchoo.org>
+Copyright (c) 2009-2020 Roger Light <roger@atchoo.org>
 
 All rights reserved. This program and the accompanying materials
-are made available under the terms of the Eclipse Public License v1.0
+are made available under the terms of the Eclipse Public License 2.0
 and Eclipse Distribution License v1.0 which accompany this distribution.
 
 The Eclipse Public License is available at
-   http://www.eclipse.org/legal/epl-v10.html
+   https://www.eclipse.org/legal/epl-2.0/
 and the Eclipse Distribution License is available at
   http://www.eclipse.org/org/documents/edl-v10.php.
+
+SPDX-License-Identifier: EPL-2.0 OR BSD-3-Clause
 
 Contributors:
    Roger Light - initial implementation and documentation.
@@ -28,7 +30,7 @@ Contributors:
 #include "logging_mosq.h"
 #include "memory_mosq.h"
 #include "messages_mosq.h"
-#include "mqtt3_protocol.h"
+#include "mqtt_protocol.h"
 #include "net_mosq.h"
 #include "packet_mosq.h"
 #include "read_handle.h"
@@ -38,10 +40,18 @@ Contributors:
 int handle__pingreq(struct mosquitto *mosq)
 {
 	assert(mosq);
+
+	if(mosquitto__get_state(mosq) != mosq_cs_active){
+		return MOSQ_ERR_PROTOCOL;
+	}
+	if(mosq->in_packet.command != CMD_PINGREQ){
+		return MOSQ_ERR_MALFORMED_PACKET;
+	}
+
 #ifdef WITH_BROKER
-	log__printf(NULL, MOSQ_LOG_DEBUG, "Received PINGREQ from %s", mosq->id);
+	log__printf(NULL, MOSQ_LOG_DEBUG, "Received PINGREQ from %s", SAFE_PRINT(mosq->id));
 #else
-	log__printf(mosq, MOSQ_LOG_DEBUG, "Client %s received PINGREQ", mosq->id);
+	return MOSQ_ERR_PROTOCOL;
 #endif
 	return send__pingresp(mosq);
 }
@@ -49,11 +59,19 @@ int handle__pingreq(struct mosquitto *mosq)
 int handle__pingresp(struct mosquitto *mosq)
 {
 	assert(mosq);
+
+	if(mosquitto__get_state(mosq) != mosq_cs_active){
+		return MOSQ_ERR_PROTOCOL;
+	}
+
 	mosq->ping_t = 0; /* No longer waiting for a PINGRESP. */
 #ifdef WITH_BROKER
-	log__printf(NULL, MOSQ_LOG_DEBUG, "Received PINGRESP from %s", mosq->id);
+	if(mosq->bridge == NULL){
+		return MOSQ_ERR_PROTOCOL;
+	}
+	log__printf(NULL, MOSQ_LOG_DEBUG, "Received PINGRESP from %s", SAFE_PRINT(mosq->id));
 #else
-	log__printf(mosq, MOSQ_LOG_DEBUG, "Client %s received PINGRESP", mosq->id);
+	log__printf(mosq, MOSQ_LOG_DEBUG, "Client %s received PINGRESP", SAFE_PRINT(mosq->id));
 #endif
 	return MOSQ_ERR_SUCCESS;
 }

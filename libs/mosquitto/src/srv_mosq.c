@@ -1,15 +1,17 @@
 /*
-Copyright (c) 2013-2019 Roger Light <roger@atchoo.org>
+Copyright (c) 2013-2020 Roger Light <roger@atchoo.org>
 
 All rights reserved. This program and the accompanying materials
-are made available under the terms of the Eclipse Public License v1.0
+are made available under the terms of the Eclipse Public License 2.0
 and Eclipse Distribution License v1.0 which accompany this distribution.
- 
+
 The Eclipse Public License is available at
-   http://www.eclipse.org/legal/epl-v10.html
+   https://www.eclipse.org/legal/epl-2.0/
 and the Eclipse Distribution License is available at
   http://www.eclipse.org/org/documents/edl-v10.php.
- 
+
+SPDX-License-Identifier: EPL-2.0 OR BSD-3-Clause
+
 Contributors:
    Roger Light - initial implementation and documentation.
 */
@@ -28,12 +30,16 @@ Contributors:
 #include "memory_mosq.h"
 #include "mosquitto_internal.h"
 #include "mosquitto.h"
+#include "util_mosq.h"
 
 #ifdef WITH_SRV
 static void srv_callback(void *arg, int status, int timeouts, unsigned char *abuf, int alen)
-{   
+{
 	struct mosquitto *mosq = arg;
 	struct ares_srv_reply *reply = NULL;
+
+	UNUSED(timeouts);
+
 	if(status == ARES_SUCCESS){
 		status = ares_parse_srv_reply(abuf, alen, &reply);
 		if(status == ARES_SUCCESS){
@@ -49,6 +55,11 @@ static void srv_callback(void *arg, int status, int timeouts, unsigned char *abu
 			mosq->on_disconnect(mosq, mosq->userdata, MOSQ_ERR_LOOKUP);
 			mosq->in_callback = false;
 		}
+		if(mosq->on_disconnect_v5){
+			mosq->in_callback = true;
+			mosq->on_disconnect_v5(mosq, mosq->userdata, MOSQ_ERR_LOOKUP, NULL);
+			mosq->in_callback = false;
+		}
 		pthread_mutex_unlock(&mosq->callback_mutex);
 	}
 }
@@ -60,6 +71,12 @@ int mosquitto_connect_srv(struct mosquitto *mosq, const char *host, int keepaliv
 	char *h;
 	int rc;
 	if(!mosq) return MOSQ_ERR_INVAL;
+
+	UNUSED(bind_address);
+
+	if(keepalive < 0 || keepalive > UINT16_MAX){
+		return MOSQ_ERR_INVAL;
+	}
 
 	rc = ares_init(&mosq->achan);
 	if(rc != ARES_SUCCESS){
@@ -86,15 +103,18 @@ int mosquitto_connect_srv(struct mosquitto *mosq, const char *host, int keepaliv
 		mosquitto__free(h);
 	}
 
-	pthread_mutex_lock(&mosq->state_mutex);
-	mosq->state = mosq_cs_connect_srv;
-	pthread_mutex_unlock(&mosq->state_mutex);
+	mosquitto__set_state(mosq, mosq_cs_connect_srv);
 
-	mosq->keepalive = keepalive;
+	mosq->keepalive = (uint16_t)keepalive;
 
 	return MOSQ_ERR_SUCCESS;
 
 #else
+	UNUSED(mosq);
+	UNUSED(host);
+	UNUSED(keepalive);
+	UNUSED(bind_address);
+
 	return MOSQ_ERR_NOT_SUPPORTED;
 #endif
 }

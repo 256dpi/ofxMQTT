@@ -1,15 +1,17 @@
 /*
-Copyright (c) 2010-2019 Roger Light <roger@atchoo.org>
+Copyright (c) 2010-2020 Roger Light <roger@atchoo.org>
 
 All rights reserved. This program and the accompanying materials
-are made available under the terms of the Eclipse Public License v1.0
+are made available under the terms of the Eclipse Public License 2.0
 and Eclipse Distribution License v1.0 which accompany this distribution.
- 
+
 The Eclipse Public License is available at
-   http://www.eclipse.org/legal/epl-v10.html
+   https://www.eclipse.org/legal/epl-2.0/
 and the Eclipse Distribution License is available at
   http://www.eclipse.org/org/documents/edl-v10.php.
- 
+
+SPDX-License-Identifier: EPL-2.0 OR BSD-3-Clause
+
 Contributors:
    Roger Light - initial implementation and documentation.
 */
@@ -30,7 +32,7 @@ Contributors:
 #include "tls_mosq.h"
 #include "util_mosq.h"
 
-#if !defined(WIN32) && !defined(__SYMBIAN32__)
+#if !defined(WIN32) && !defined(__SYMBIAN32__) && !defined(__QNX__)
 #define HAVE_PSELECT
 #endif
 
@@ -47,6 +49,7 @@ int mosquitto_loop(struct mosquitto *mosq, int timeout, int max_packets)
 	char pairbuf;
 	int maxfd = 0;
 	time_t now;
+	time_t timeout_ms;
 
 	if(!mosq || max_packets < 1) return MOSQ_ERR_INVAL;
 #ifndef WIN32
@@ -83,17 +86,14 @@ int mosquitto_loop(struct mosquitto *mosq, int timeout, int max_packets)
 	}else{
 #ifdef WITH_SRV
 		if(mosq->achan){
-			pthread_mutex_lock(&mosq->state_mutex);
-			if(mosq->state == mosq_cs_connect_srv){
+			if(mosquitto__get_state(mosq) == mosq_cs_connect_srv){
 				rc = ares_fds(mosq->achan, &readfds, &writefds);
 				if(rc > maxfd){
 					maxfd = rc;
 				}
 			}else{
-				pthread_mutex_unlock(&mosq->state_mutex);
 				return MOSQ_ERR_NO_CONN;
 			}
-			pthread_mutex_unlock(&mosq->state_mutex);
 		}
 #else
 		return MOSQ_ERR_NO_CONN;
@@ -103,31 +103,32 @@ int mosquitto_loop(struct mosquitto *mosq, int timeout, int max_packets)
 		/* sockpairR is used to break out of select() before the timeout, on a
 		 * call to publish() etc. */
 		FD_SET(mosq->sockpairR, &readfds);
-		if(mosq->sockpairR > maxfd){
+		if((int)mosq->sockpairR > maxfd){
 			maxfd = mosq->sockpairR;
 		}
 	}
 
-	if(timeout < 0){
-		timeout = 1000;
+	timeout_ms = timeout;
+	if(timeout_ms < 0){
+		timeout_ms = 1000;
 	}
 
 	now = mosquitto_time();
-	if(mosq->next_msg_out && now + timeout/1000 > mosq->next_msg_out){
-		timeout = (mosq->next_msg_out - now)*1000;
+	if(mosq->next_msg_out && now + timeout_ms/1000 > mosq->next_msg_out){
+		timeout_ms = (mosq->next_msg_out - now)*1000;
 	}
 
-	if(timeout < 0){
+	if(timeout_ms < 0){
 		/* There has been a delay somewhere which means we should have already
 		 * sent a message. */
-		timeout = 0;
+		timeout_ms = 0;
 	}
 
-	local_timeout.tv_sec = timeout/1000;
+	local_timeout.tv_sec = timeout_ms/1000;
 #ifdef HAVE_PSELECT
-	local_timeout.tv_nsec = (timeout-local_timeout.tv_sec*1000)*1e6;
+	local_timeout.tv_nsec = (timeout_ms-local_timeout.tv_sec*1000)*1000000;
 #else
-	local_timeout.tv_usec = (timeout-local_timeout.tv_sec*1000)*1000;
+	local_timeout.tv_usec = (timeout_ms-local_timeout.tv_sec*1000)*1000;
 #endif
 
 #ifdef HAVE_PSELECT
@@ -190,28 +191,81 @@ int mosquitto_loop(struct mosquitto *mosq, int timeout, int max_packets)
 }
 
 
+static int interruptible_sleep(struct mosquitto *mosq, time_t reconnect_delay)
+{
+#ifdef HAVE_PSELECT
+	struct timespec local_timeout;
+#else
+	struct timeval local_timeout;
+#endif
+	fd_set readfds;
+	int fdcount;
+	char pairbuf;
+	int maxfd = 0;
+
+#ifndef WIN32
+	while(mosq->sockpairR != INVALID_SOCKET && read(mosq->sockpairR, &pairbuf, 1) > 0);
+#else
+	while(mosq->sockpairR != INVALID_SOCKET && recv(mosq->sockpairR, &pairbuf, 1, 0) > 0);
+#endif
+
+	local_timeout.tv_sec = reconnect_delay;
+#ifdef HAVE_PSELECT
+	local_timeout.tv_nsec = 0;
+#else
+	local_timeout.tv_usec = 0;
+#endif
+	FD_ZERO(&readfds);
+	maxfd = 0;
+	if(mosq->sockpairR != INVALID_SOCKET){
+		/* sockpairR is used to break out of select() before the
+		 * timeout, when mosquitto_loop_stop() is called */
+		FD_SET(mosq->sockpairR, &readfds);
+		maxfd = mosq->sockpairR;
+	}
+#ifdef HAVE_PSELECT
+	fdcount = pselect(maxfd+1, &readfds, NULL, NULL, &local_timeout, NULL);
+#else
+	fdcount = select(maxfd+1, &readfds, NULL, NULL, &local_timeout);
+#endif
+	if(fdcount == -1){
+#ifdef WIN32
+		errno = WSAGetLastError();
+#endif
+		if(errno == EINTR){
+			return MOSQ_ERR_SUCCESS;
+		}else{
+			return MOSQ_ERR_ERRNO;
+		}
+	}else if(mosq->sockpairR != INVALID_SOCKET && FD_ISSET(mosq->sockpairR, &readfds)){
+#ifndef WIN32
+		if(read(mosq->sockpairR, &pairbuf, 1) == 0){
+		}
+#else
+		recv(mosq->sockpairR, &pairbuf, 1, 0);
+#endif
+	}
+	return MOSQ_ERR_SUCCESS;
+}
+
+
 int mosquitto_loop_forever(struct mosquitto *mosq, int timeout, int max_packets)
 {
 	int run = 1;
-	int rc;
-	unsigned int reconnects = 0;
+	int rc = MOSQ_ERR_SUCCESS;
 	unsigned long reconnect_delay;
-#ifndef WIN32
-	struct timespec req, rem;
-#endif
+	enum mosquitto_client_state state;
 
 	if(!mosq) return MOSQ_ERR_INVAL;
 
-	if(mosq->state == mosq_cs_connect_async){
-		mosquitto_reconnect(mosq);
-	}
+	mosq->reconnects = 0;
 
 	while(run){
 		do{
+#ifdef HAVE_PTHREAD_CANCEL
+			pthread_testcancel();
+#endif
 			rc = mosquitto_loop(mosq, timeout, max_packets);
-			if (reconnects !=0 && rc == MOSQ_ERR_SUCCESS){
-				reconnects = 0;
-			}
 		}while(run && rc == MOSQ_ERR_SUCCESS);
 		/* Quit after fatal errors. */
 		switch(rc){
@@ -235,19 +289,19 @@ int mosquitto_loop_forever(struct mosquitto *mosq, int timeout, int max_packets)
 			return rc;
 		}
 		do{
+#ifdef HAVE_PTHREAD_CANCEL
+			pthread_testcancel();
+#endif
 			rc = MOSQ_ERR_SUCCESS;
-			pthread_mutex_lock(&mosq->state_mutex);
-			if(mosq->state == mosq_cs_disconnecting){
+			state = mosquitto__get_state(mosq);
+			if(state == mosq_cs_disconnecting || state == mosq_cs_disconnected){
 				run = 0;
-				pthread_mutex_unlock(&mosq->state_mutex);
 			}else{
-				pthread_mutex_unlock(&mosq->state_mutex);
-
 				if(mosq->reconnect_delay_max > mosq->reconnect_delay){
 					if(mosq->reconnect_exponential_backoff){
-						reconnect_delay = mosq->reconnect_delay*(reconnects+1)*(reconnects+1);
+						reconnect_delay = mosq->reconnect_delay*(mosq->reconnects+1)*(mosq->reconnects+1);
 					}else{
-						reconnect_delay = mosq->reconnect_delay*(reconnects+1);
+						reconnect_delay = mosq->reconnect_delay*(mosq->reconnects+1);
 					}
 				}else{
 					reconnect_delay = mosq->reconnect_delay;
@@ -256,25 +310,16 @@ int mosquitto_loop_forever(struct mosquitto *mosq, int timeout, int max_packets)
 				if(reconnect_delay > mosq->reconnect_delay_max){
 					reconnect_delay = mosq->reconnect_delay_max;
 				}else{
-					reconnects++;
+					mosq->reconnects++;
 				}
 
-#ifdef WIN32
-				Sleep(reconnect_delay*1000);
-#else
-				req.tv_sec = reconnect_delay;
-				req.tv_nsec = 0;
-				while(nanosleep(&req, &rem) == -1 && errno == EINTR){
-					req = rem;
-				}
-#endif
+				rc = interruptible_sleep(mosq, (time_t)reconnect_delay);
+				if(rc) return rc;
 
-				pthread_mutex_lock(&mosq->state_mutex);
-				if(mosq->state == mosq_cs_disconnecting){
+				state = mosquitto__get_state(mosq);
+				if(state == mosq_cs_disconnecting || state == mosq_cs_disconnected){
 					run = 0;
-					pthread_mutex_unlock(&mosq->state_mutex);
 				}else{
-					pthread_mutex_unlock(&mosq->state_mutex);
 					rc = mosquitto_reconnect(mosq);
 				}
 			}
@@ -295,21 +340,26 @@ int mosquitto_loop_misc(struct mosquitto *mosq)
 
 static int mosquitto__loop_rc_handle(struct mosquitto *mosq, int rc)
 {
+	enum mosquitto_client_state state;
+
 	if(rc){
 		net__socket_close(mosq);
-		pthread_mutex_lock(&mosq->state_mutex);
-		if(mosq->state == mosq_cs_disconnecting){
+		state = mosquitto__get_state(mosq);
+		if(state == mosq_cs_disconnecting || state == mosq_cs_disconnected){
 			rc = MOSQ_ERR_SUCCESS;
 		}
-		pthread_mutex_unlock(&mosq->state_mutex);
 		pthread_mutex_lock(&mosq->callback_mutex);
 		if(mosq->on_disconnect){
 			mosq->in_callback = true;
 			mosq->on_disconnect(mosq, mosq->userdata, rc);
 			mosq->in_callback = false;
 		}
+		if(mosq->on_disconnect_v5){
+			mosq->in_callback = true;
+			mosq->on_disconnect_v5(mosq, mosq->userdata, rc, NULL);
+			mosq->in_callback = false;
+		}
 		pthread_mutex_unlock(&mosq->callback_mutex);
-		return rc;
 	}
 	return rc;
 }
@@ -317,23 +367,27 @@ static int mosquitto__loop_rc_handle(struct mosquitto *mosq, int rc)
 
 int mosquitto_loop_read(struct mosquitto *mosq, int max_packets)
 {
-	int rc;
+	int rc = MOSQ_ERR_SUCCESS;
 	int i;
 	if(max_packets < 1) return MOSQ_ERR_INVAL;
 
 #ifdef WITH_TLS
 	if(mosq->want_connect){
-		return net__socket_connect_tls(mosq);
+		rc = net__socket_connect_tls(mosq);
+		if (MOSQ_ERR_TLS == rc){
+			rc = mosquitto__loop_rc_handle(mosq, rc);
+		}
+		return rc;
 	}
 #endif
 
-	pthread_mutex_lock(&mosq->out_message_mutex);
-	max_packets = mosq->out_queue_len;
-	pthread_mutex_unlock(&mosq->out_message_mutex);
+	pthread_mutex_lock(&mosq->msgs_out.mutex);
+	max_packets = mosq->msgs_out.queue_len;
+	pthread_mutex_unlock(&mosq->msgs_out.mutex);
 
-	pthread_mutex_lock(&mosq->in_message_mutex);
-	max_packets += mosq->in_queue_len;
-	pthread_mutex_unlock(&mosq->in_message_mutex);
+	pthread_mutex_lock(&mosq->msgs_in.mutex);
+	max_packets += mosq->msgs_in.queue_len;
+	pthread_mutex_unlock(&mosq->msgs_in.mutex);
 
 	if(max_packets < 1) max_packets = 1;
 	/* Queue len here tells us how many messages are awaiting processing and
@@ -358,22 +412,10 @@ int mosquitto_loop_read(struct mosquitto *mosq, int max_packets)
 
 int mosquitto_loop_write(struct mosquitto *mosq, int max_packets)
 {
-	int rc;
+	int rc = MOSQ_ERR_SUCCESS;
 	int i;
 	if(max_packets < 1) return MOSQ_ERR_INVAL;
 
-	pthread_mutex_lock(&mosq->out_message_mutex);
-	max_packets = mosq->out_queue_len;
-	pthread_mutex_unlock(&mosq->out_message_mutex);
-
-	pthread_mutex_lock(&mosq->in_message_mutex);
-	max_packets += mosq->in_queue_len;
-	pthread_mutex_unlock(&mosq->in_message_mutex);
-
-	if(max_packets < 1) max_packets = 1;
-	/* Queue len here tells us how many messages are awaiting processing and
-	 * have QoS > 0. We should try to deal with that many in this loop in order
-	 * to keep up. */
 	for(i=0; i<max_packets; i++){
 		rc = packet__write(mosq);
 		if(rc || errno == EAGAIN || errno == COMPAT_EWOULDBLOCK){

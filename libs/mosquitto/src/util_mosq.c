@@ -1,14 +1,16 @@
 /*
-Copyright (c) 2009-2019 Roger Light <roger@atchoo.org>
+Copyright (c) 2009-2020 Roger Light <roger@atchoo.org>
 
 All rights reserved. This program and the accompanying materials
-are made available under the terms of the Eclipse Public License v1.0
+are made available under the terms of the Eclipse Public License 2.0
 and Eclipse Distribution License v1.0 which accompany this distribution.
 
 The Eclipse Public License is available at
-   http://www.eclipse.org/legal/epl-v10.html
+   https://www.eclipse.org/legal/epl-2.0/
 and the Eclipse Distribution License is available at
   http://www.eclipse.org/org/documents/edl-v10.php.
+
+SPDX-License-Identifier: EPL-2.0 OR BSD-3-Clause
 
 Contributors:
    Roger Light - initial implementation and documentation.
@@ -17,6 +19,7 @@ Contributors:
 #include "config.h"
 
 #include <assert.h>
+#include <ctype.h>
 #include <string.h>
 
 #ifdef WIN32
@@ -28,8 +31,16 @@ Contributors:
 #  include <sys/stat.h>
 #endif
 
+#if !defined(WITH_TLS) && defined(__linux__) && defined(__GLIBC__)
+#  if __GLIBC_PREREQ(2, 25)
+#    include <sys/random.h>
+#    define HAVE_GETRANDOM 1
+#  endif
+#endif
+
 #ifdef WITH_TLS
 #  include <openssl/bn.h>
+#  include <openssl/rand.h>
 #endif
 
 #ifdef WITH_BROKER
@@ -48,20 +59,23 @@ Contributors:
 #include <libwebsockets.h>
 #endif
 
-#ifdef WITH_BROKER
-int mosquitto__check_keepalive(struct mosquitto_db *db, struct mosquitto *mosq)
-#else
 int mosquitto__check_keepalive(struct mosquitto *mosq)
-#endif
 {
 	time_t next_msg_out;
 	time_t last_msg_in;
-	time_t now = mosquitto_time();
+	time_t now;
 #ifndef WITH_BROKER
 	int rc;
 #endif
+	enum mosquitto_client_state state;
 
 	assert(mosq);
+#ifdef WITH_BROKER
+	now = db.now_s;
+#else
+	now = mosquitto_time();
+#endif
+
 #if defined(WITH_BROKER) && defined(WITH_BRIDGE)
 	/* Check if a lazy bridge should be timed out due to idle. */
 	if(mosq->bridge && mosq->bridge->start_type == bst_lazy
@@ -69,7 +83,7 @@ int mosquitto__check_keepalive(struct mosquitto *mosq)
 				&& now - mosq->next_msg_out - mosq->keepalive >= mosq->bridge->idle_timeout){
 
 		log__printf(NULL, MOSQ_LOG_NOTICE, "Bridge connection %s has exceeded idle timeout, disconnecting.", mosq->id);
-		net__socket_close(db, mosq);
+		net__socket_close(mosq);
 		return MOSQ_ERR_SUCCESS;
 	}
 #endif
@@ -80,7 +94,8 @@ int mosquitto__check_keepalive(struct mosquitto *mosq)
 	if(mosq->keepalive && mosq->sock != INVALID_SOCKET &&
 			(now >= next_msg_out || now - last_msg_in >= mosq->keepalive)){
 
-		if(mosq->state == mosq_cs_connected && mosq->ping_t == 0){
+		state = mosquitto__get_state(mosq);
+		if(state == mosq_cs_active && mosq->ping_t == 0){
 			send__pingreq(mosq);
 			/* Reset last msg times to give the server time to send a pingresp */
 			pthread_mutex_lock(&mosq->msgtime_mutex);
@@ -89,20 +104,24 @@ int mosquitto__check_keepalive(struct mosquitto *mosq)
 			pthread_mutex_unlock(&mosq->msgtime_mutex);
 		}else{
 #ifdef WITH_BROKER
-			net__socket_close(db, mosq);
+			net__socket_close(mosq);
 #else
 			net__socket_close(mosq);
-			pthread_mutex_lock(&mosq->state_mutex);
-			if(mosq->state == mosq_cs_disconnecting){
+			state = mosquitto__get_state(mosq);
+			if(state == mosq_cs_disconnecting){
 				rc = MOSQ_ERR_SUCCESS;
 			}else{
 				rc = MOSQ_ERR_KEEPALIVE;
 			}
-			pthread_mutex_unlock(&mosq->state_mutex);
 			pthread_mutex_lock(&mosq->callback_mutex);
 			if(mosq->on_disconnect){
 				mosq->in_callback = true;
 				mosq->on_disconnect(mosq, mosq->userdata, rc);
+				mosq->in_callback = false;
+			}
+			if(mosq->on_disconnect_v5){
+				mosq->in_callback = true;
+				mosq->on_disconnect_v5(mosq, mosq->userdata, rc, NULL);
 				mosq->in_callback = false;
 			}
 			pthread_mutex_unlock(&mosq->callback_mutex);
@@ -135,239 +154,32 @@ uint16_t mosquitto__mid_generate(struct mosquitto *mosq)
 	return mid;
 }
 
-/* Check that a topic used for publishing is valid.
- * Search for + or # in a topic. Return MOSQ_ERR_INVAL if found.
- * Also returns MOSQ_ERR_INVAL if the topic string is too long.
- * Returns MOSQ_ERR_SUCCESS if everything is fine.
- */
-int mosquitto_pub_topic_check(const char *str)
+
+#ifdef WITH_TLS
+int mosquitto__hex2bin_sha1(const char *hex, unsigned char **bin)
 {
-	int len = 0;
-	while(str && str[0]){
-		if(str[0] == '+' || str[0] == '#'){
-			return MOSQ_ERR_INVAL;
-		}
-		len++;
-		str = &str[1];
-	}
-	if(len > 65535) return MOSQ_ERR_INVAL;
+	unsigned char *sha, tmp[SHA_DIGEST_LENGTH];
 
-	return MOSQ_ERR_SUCCESS;
-}
-
-int mosquitto_pub_topic_check2(const char *str, size_t len)
-{
-	int i;
-
-	if(len > 65535) return MOSQ_ERR_INVAL;
-
-	for(i=0; i<len; i++){
-		if(str[i] == '+' || str[i] == '#'){
-			return MOSQ_ERR_INVAL;
-		}
-	}
-
-	return MOSQ_ERR_SUCCESS;
-}
-
-/* Check that a topic used for subscriptions is valid.
- * Search for + or # in a topic, check they aren't in invalid positions such as
- * foo/#/bar, foo/+bar or foo/bar#.
- * Return MOSQ_ERR_INVAL if invalid position found.
- * Also returns MOSQ_ERR_INVAL if the topic string is too long.
- * Returns MOSQ_ERR_SUCCESS if everything is fine.
- */
-int mosquitto_sub_topic_check(const char *str)
-{
-	char c = '\0';
-	int len = 0;
-	while(str && str[0]){
-		if(str[0] == '+'){
-			if((c != '\0' && c != '/') || (str[1] != '\0' && str[1] != '/')){
-				return MOSQ_ERR_INVAL;
-			}
-		}else if(str[0] == '#'){
-			if((c != '\0' && c != '/')  || str[1] != '\0'){
-				return MOSQ_ERR_INVAL;
-			}
-		}
-		len++;
-		c = str[0];
-		str = &str[1];
-	}
-	if(len > 65535) return MOSQ_ERR_INVAL;
-
-	return MOSQ_ERR_SUCCESS;
-}
-
-int mosquitto_sub_topic_check2(const char *str, size_t len)
-{
-	char c = '\0';
-	int i;
-
-	if(len > 65535) return MOSQ_ERR_INVAL;
-
-	for(i=0; i<len; i++){
-		if(str[i] == '+'){
-			if((c != '\0' && c != '/') || (i<len-1 && str[i+1] != '/')){
-				return MOSQ_ERR_INVAL;
-			}
-		}else if(str[i] == '#'){
-			if((c != '\0' && c != '/')  || i<len-1){
-				return MOSQ_ERR_INVAL;
-			}
-		}
-		c = str[i];
-	}
-
-	return MOSQ_ERR_SUCCESS;
-}
-
-int mosquitto_topic_matches_sub(const char *sub, const char *topic, bool *result)
-{
-	int slen, tlen;
-
-	if(!result) return MOSQ_ERR_INVAL;
-	*result = false;
-
-	if(!sub || !topic){
+	if(mosquitto__hex2bin(hex, tmp, SHA_DIGEST_LENGTH) != SHA_DIGEST_LENGTH){
 		return MOSQ_ERR_INVAL;
 	}
 
-	slen = strlen(sub);
-	tlen = strlen(topic);
-
-	return mosquitto_topic_matches_sub2(sub, slen, topic, tlen, result);
-}
-
-/* Does a topic match a subscription? */
-int mosquitto_topic_matches_sub2(const char *sub, size_t sublen, const char *topic, size_t topiclen, bool *result)
-{
-	int spos, tpos;
-	bool multilevel_wildcard = false;
-	int i;
-
-	if(!result) return MOSQ_ERR_INVAL;
-	*result = false;
-
-	if(!sub || !topic){
-		return MOSQ_ERR_INVAL;
+	sha = mosquitto__malloc(SHA_DIGEST_LENGTH);
+	if(!sha){
+		return MOSQ_ERR_NOMEM;
 	}
-
-	if(!sublen || !topiclen){
-		*result = false;
-		return MOSQ_ERR_INVAL;
-	}
-
-	if(sublen && topiclen){
-		if((sub[0] == '$' && topic[0] != '$')
-				|| (topic[0] == '$' && sub[0] != '$')){
-
-			return MOSQ_ERR_SUCCESS;
-		}
-	}
-
-	spos = 0;
-	tpos = 0;
-
-	while(spos < sublen && tpos <= topiclen){
-		if(topic[tpos] == '+' || topic[tpos] == '#'){
-			return MOSQ_ERR_INVAL;
-		}
-		if(tpos == topiclen || sub[spos] != topic[tpos]){ /* Check for wildcard matches */
-			if(sub[spos] == '+'){
-				/* Check for bad "+foo" or "a/+foo" subscription */
-				if(spos > 0 && sub[spos-1] != '/'){
-					return MOSQ_ERR_INVAL;
-				}
-				/* Check for bad "foo+" or "foo+/a" subscription */
-				if(spos < sublen-1 && sub[spos+1] != '/'){
-					return MOSQ_ERR_INVAL;
-				}
-				spos++;
-				while(tpos < topiclen && topic[tpos] != '/'){
-					tpos++;
-				}
-				if(tpos == topiclen && spos == sublen){
-					*result = true;
-					return MOSQ_ERR_SUCCESS;
-				}
-			}else if(sub[spos] == '#'){
-				if(spos > 0 && sub[spos-1] != '/'){
-					return MOSQ_ERR_INVAL;
-				}
-				multilevel_wildcard = true;
-				if(spos+1 != sublen){
-					return MOSQ_ERR_INVAL;
-				}else{
-					*result = true;
-					return MOSQ_ERR_SUCCESS;
-				}
-			}else{
-				/* Check for e.g. foo/bar matching foo/+/# */
-				if(spos > 0
-						&& spos+2 == sublen
-						&& tpos == topiclen
-						&& sub[spos-1] == '+'
-						&& sub[spos] == '/'
-						&& sub[spos+1] == '#')
-				{
-					*result = true;
-					multilevel_wildcard = true;
-					return MOSQ_ERR_SUCCESS;
-				}
-
-				for(i=spos; i<sublen; i++){
-					if(sub[i] == '#' && i+1 != sublen){
-						return MOSQ_ERR_INVAL;
-					}
-				}
-
-				/* Valid input, but no match */
-				return MOSQ_ERR_SUCCESS;
-			}
-		}else{
-			/* sub[spos] == topic[tpos] */
-			if(tpos == topiclen-1){
-				/* Check for e.g. foo matching foo/# */
-				if(spos == sublen-3
-						&& sub[spos+1] == '/'
-						&& sub[spos+2] == '#'){
-					*result = true;
-					multilevel_wildcard = true;
-					return MOSQ_ERR_SUCCESS;
-				}
-			}
-			spos++;
-			tpos++;
-			if(spos == sublen && tpos == topiclen){
-				*result = true;
-				return MOSQ_ERR_SUCCESS;
-			}else if(tpos == topiclen && spos == sublen-1 && sub[spos] == '+'){
-				if(spos > 0 && sub[spos-1] != '/'){
-					return MOSQ_ERR_INVAL;
-				}
-				spos++;
-				*result = true;
-				return MOSQ_ERR_SUCCESS;
-			}
-		}
-	}
-	if(multilevel_wildcard == false && (tpos < topiclen || spos < sublen)){
-		*result = false;
-	}
-
+	memcpy(sha, tmp, SHA_DIGEST_LENGTH);
+	*bin = sha;
 	return MOSQ_ERR_SUCCESS;
 }
 
-#ifdef FINAL_WITH_TLS_PSK
 int mosquitto__hex2bin(const char *hex, unsigned char *bin, int bin_max_len)
 {
 	BIGNUM *bn = NULL;
 	int len;
 	int leading_zero = 0;
 	int start = 0;
-	int i = 0;
+	size_t i = 0;
 
 	/* Count the number of leading zero */
 	for(i=0; i<strlen(hex); i=i+2) {
@@ -395,92 +207,93 @@ int mosquitto__hex2bin(const char *hex, unsigned char *bin, int bin_max_len)
 }
 #endif
 
-FILE *mosquitto__fopen(const char *path, const char *mode, bool restrict_read)
+void util__increment_receive_quota(struct mosquitto *mosq)
 {
-#ifdef WIN32
-	char buf[4096];
-	int rc;
-	rc = ExpandEnvironmentStrings(path, buf, 4096);
-	if(rc == 0 || rc > 4096){
-		return NULL;
-	}else{
-		if (restrict_read) {
-			HANDLE hfile;
-			SECURITY_ATTRIBUTES sec;
-			EXPLICIT_ACCESS ea;
-			PACL pacl = NULL;
-			char username[UNLEN + 1];
-			int ulen = UNLEN;
-			SECURITY_DESCRIPTOR sd;
-			DWORD dwCreationDisposition;
-
-			switch(mode[0]){
-				case 'a':
-					dwCreationDisposition = OPEN_ALWAYS;
-					break;
-				case 'r':
-					dwCreationDisposition = OPEN_EXISTING;
-					break;
-				case 'w':
-					dwCreationDisposition = CREATE_ALWAYS;
-					break;
-				default:
-					return NULL;
-			}
-
-			GetUserName(username, &ulen);
-			if (!InitializeSecurityDescriptor(&sd, SECURITY_DESCRIPTOR_REVISION)) {
-				return NULL;
-			}
-			BuildExplicitAccessWithName(&ea, username, GENERIC_ALL, SET_ACCESS, NO_INHERITANCE);
-			if (SetEntriesInAcl(1, &ea, NULL, &pacl) != ERROR_SUCCESS) {
-				return NULL;
-			}
-			if (!SetSecurityDescriptorDacl(&sd, TRUE, pacl, FALSE)) {
-				LocalFree(pacl);
-				return NULL;
-			}
-
-			sec.nLength = sizeof(SECURITY_ATTRIBUTES);
-			sec.bInheritHandle = FALSE;
-			sec.lpSecurityDescriptor = &sd;
-
-			hfile = CreateFile(buf, GENERIC_READ | GENERIC_WRITE, 0,
-				&sec,
-				dwCreationDisposition,
-				FILE_ATTRIBUTE_NORMAL,
-				NULL);
-
-			LocalFree(pacl);
-
-			int fd = _open_osfhandle((intptr_t)hfile, 0);
-			if (fd < 0) {
-				return NULL;
-			}
-
-			FILE *fptr = _fdopen(fd, mode);
-			if (!fptr) {
-				_close(fd);
-				return NULL;
-			}
-			return fptr;
-
-		}else {
-			return fopen(buf, mode);
-		}
+	if(mosq->msgs_in.inflight_quota < mosq->msgs_in.inflight_maximum){
+		mosq->msgs_in.inflight_quota++;
 	}
+}
+
+void util__increment_send_quota(struct mosquitto *mosq)
+{
+	if(mosq->msgs_out.inflight_quota < mosq->msgs_out.inflight_maximum){
+		mosq->msgs_out.inflight_quota++;
+	}
+}
+
+
+void util__decrement_receive_quota(struct mosquitto *mosq)
+{
+	if(mosq->msgs_in.inflight_quota > 0){
+		mosq->msgs_in.inflight_quota--;
+	}
+}
+
+void util__decrement_send_quota(struct mosquitto *mosq)
+{
+	if(mosq->msgs_out.inflight_quota > 0){
+		mosq->msgs_out.inflight_quota--;
+	}
+}
+
+
+int util__random_bytes(void *bytes, int count)
+{
+	int rc = MOSQ_ERR_UNKNOWN;
+
+#ifdef WITH_TLS
+	if(RAND_bytes(bytes, count) == 1){
+		rc = MOSQ_ERR_SUCCESS;
+	}
+#elif defined(HAVE_GETRANDOM)
+	if(getrandom(bytes, (size_t)count, 0) == count){
+		rc = MOSQ_ERR_SUCCESS;
+	}
+#elif defined(WIN32)
+	HCRYPTPROV provider;
+
+	if(!CryptAcquireContext(&provider, NULL, NULL, PROV_RSA_FULL, CRYPT_VERIFYCONTEXT)){
+		return MOSQ_ERR_UNKNOWN;
+	}
+
+	if(CryptGenRandom(provider, count, bytes)){
+		rc = MOSQ_ERR_SUCCESS;
+	}
+
+	CryptReleaseContext(provider, 0);
 #else
-	if (restrict_read) {
-		FILE *fptr;
-		mode_t old_mask;
+	int i;
 
-		old_mask = umask(0077);
-		fptr = fopen(path, mode);
-		umask(old_mask);
-
-		return fptr;
-	}else{
-		return fopen(path, mode);
+	for(i=0; i<count; i++){
+		((uint8_t *)bytes)[i] = (uint8_t )(random()&0xFF);
 	}
+	rc = MOSQ_ERR_SUCCESS;
 #endif
+	return rc;
+}
+
+
+int mosquitto__set_state(struct mosquitto *mosq, enum mosquitto_client_state state)
+{
+	pthread_mutex_lock(&mosq->state_mutex);
+#ifdef WITH_BROKER
+	if(mosq->state != mosq_cs_disused)
+#endif
+	{
+		mosq->state = state;
+	}
+	pthread_mutex_unlock(&mosq->state_mutex);
+
+	return MOSQ_ERR_SUCCESS;
+}
+
+enum mosquitto_client_state mosquitto__get_state(struct mosquitto *mosq)
+{
+	enum mosquitto_client_state state;
+
+	pthread_mutex_lock(&mosq->state_mutex);
+	state = mosq->state;
+	pthread_mutex_unlock(&mosq->state_mutex);
+
+	return state;
 }

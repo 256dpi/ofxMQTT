@@ -1,15 +1,17 @@
 /*
-Copyright (c) 2010-2019 Roger Light <roger@atchoo.org>
+Copyright (c) 2010-2020 Roger Light <roger@atchoo.org>
 
 All rights reserved. This program and the accompanying materials
-are made available under the terms of the Eclipse Public License v1.0
+are made available under the terms of the Eclipse Public License 2.0
 and Eclipse Distribution License v1.0 which accompany this distribution.
- 
+
 The Eclipse Public License is available at
-   http://www.eclipse.org/legal/epl-v10.html
+   https://www.eclipse.org/legal/epl-2.0/
 and the Eclipse Distribution License is available at
   http://www.eclipse.org/org/documents/edl-v10.php.
- 
+
+SPDX-License-Identifier: EPL-2.0 OR BSD-3-Clause
+
 Contributors:
    Roger Light - initial implementation and documentation.
 */
@@ -21,16 +23,24 @@ Contributors:
 #include <string.h>
 #ifndef WIN32
 #include <sys/time.h>
+#include <strings.h>
 #endif
 
+#if defined(__APPLE__)
+#  include <mach/mach_time.h>
+#endif
+
+#include "logging_mosq.h"
 #include "mosquitto.h"
 #include "mosquitto_internal.h"
 #include "memory_mosq.h"
 #include "messages_mosq.h"
+#include "mqtt_protocol.h"
 #include "net_mosq.h"
 #include "packet_mosq.h"
 #include "will_mosq.h"
 
+static unsigned int init_refcount = 0;
 
 void mosquitto__destroy(struct mosquitto *mosq);
 
@@ -44,41 +54,57 @@ int mosquitto_lib_version(int *major, int *minor, int *revision)
 
 int mosquitto_lib_init(void)
 {
+	int rc;
+
+	if (init_refcount == 0) {
 #ifdef WIN32
-	srand(GetTickCount64());
+		srand((unsigned int)GetTickCount64());
 #elif _POSIX_TIMERS>0 && defined(_POSIX_MONOTONIC_CLOCK)
-	struct timespec tp;
+		struct timespec tp;
 
-	clock_gettime(CLOCK_MONOTONIC, &tp);
-	srand(tp.tv_nsec);
+		clock_gettime(CLOCK_MONOTONIC, &tp);
+		srand((unsigned int)tp.tv_nsec);
 #elif defined(__APPLE__)
-	uint64_t ticks;
+		uint64_t ticks;
 
-	ticks = mach_absolute_time();
-	srand((unsigned int)ticks);
+		ticks = mach_absolute_time();
+		srand((unsigned int)ticks);
 #else
-	struct timeval tv;
+		struct timeval tv;
 
-	gettimeofday(&tv, NULL);
-	srand(tv.tv_sec*1000 + tv.tv_usec/1000);
+		gettimeofday(&tv, NULL);
+		srand(tv.tv_sec*1000 + tv.tv_usec/1000);
 #endif
 
-	return net__init();
+		rc = net__init();
+		if (rc != MOSQ_ERR_SUCCESS) {
+			return rc;
+		}
+	}
+
+	init_refcount++;
+	return MOSQ_ERR_SUCCESS;
 }
 
 int mosquitto_lib_cleanup(void)
 {
-	net__cleanup();
+	if (init_refcount == 1) {
+		net__cleanup();
+	}
+
+	if (init_refcount > 0) {
+		--init_refcount;
+	}
 
 	return MOSQ_ERR_SUCCESS;
 }
 
-struct mosquitto *mosquitto_new(const char *id, bool clean_session, void *userdata)
+struct mosquitto *mosquitto_new(const char *id, bool clean_start, void *userdata)
 {
 	struct mosquitto *mosq = NULL;
 	int rc;
 
-	if(clean_session == false && id == NULL){
+	if(clean_start == false && id == NULL){
 		errno = EINVAL;
 		return NULL;
 	}
@@ -90,12 +116,12 @@ struct mosquitto *mosquitto_new(const char *id, bool clean_session, void *userda
 	mosq = (struct mosquitto *)mosquitto__calloc(1, sizeof(struct mosquitto));
 	if(mosq){
 		mosq->sock = INVALID_SOCKET;
-		mosq->sockpairR = INVALID_SOCKET;
-		mosq->sockpairW = INVALID_SOCKET;
 #ifdef WITH_THREADING
 		mosq->thread_id = pthread_self();
 #endif
-		rc = mosquitto_reinitialise(mosq, id, clean_session, userdata);
+		mosq->sockpairR = INVALID_SOCKET;
+		mosq->sockpairW = INVALID_SOCKET;
+		rc = mosquitto_reinitialise(mosq, id, clean_start, userdata);
 		if(rc){
 			mosquitto_destroy(mosq);
 			if(rc == MOSQ_ERR_INVAL){
@@ -111,13 +137,11 @@ struct mosquitto *mosquitto_new(const char *id, bool clean_session, void *userda
 	return mosq;
 }
 
-int mosquitto_reinitialise(struct mosquitto *mosq, const char *id, bool clean_session, void *userdata)
+int mosquitto_reinitialise(struct mosquitto *mosq, const char *id, bool clean_start, void *userdata)
 {
-	int i;
-
 	if(!mosq) return MOSQ_ERR_INVAL;
 
-	if(clean_session == false && id == NULL){
+	if(clean_start == false && id == NULL){
 		return MOSQ_ERR_INVAL;
 	}
 
@@ -134,44 +158,31 @@ int mosquitto_reinitialise(struct mosquitto *mosq, const char *id, bool clean_se
 	mosq->sockpairR = INVALID_SOCKET;
 	mosq->sockpairW = INVALID_SOCKET;
 	mosq->keepalive = 60;
-	mosq->clean_session = clean_session;
+	mosq->clean_start = clean_start;
 	if(id){
 		if(STREMPTY(id)){
 			return MOSQ_ERR_INVAL;
 		}
-		if(mosquitto_validate_utf8(id, strlen(id))){
+		if(mosquitto_validate_utf8(id, (int)strlen(id))){
 			return MOSQ_ERR_MALFORMED_UTF8;
 		}
 		mosq->id = mosquitto__strdup(id);
-	}else{
-		mosq->id = (char *)mosquitto__calloc(24, sizeof(char));
-		if(!mosq->id){
-			return MOSQ_ERR_NOMEM;
-		}
-		mosq->id[0] = 'm';
-		mosq->id[1] = 'o';
-		mosq->id[2] = 's';
-		mosq->id[3] = 'q';
-		mosq->id[4] = '/';
-
-		for(i=5; i<23; i++){
-			mosq->id[i] = (rand()%73)+48;
-		}
 	}
 	mosq->in_packet.payload = NULL;
 	packet__cleanup(&mosq->in_packet);
 	mosq->out_packet = NULL;
+	mosq->out_packet_count = 0;
 	mosq->current_out_packet = NULL;
 	mosq->last_msg_in = mosquitto_time();
 	mosq->next_msg_out = mosquitto_time() + mosq->keepalive;
 	mosq->ping_t = 0;
 	mosq->last_mid = 0;
 	mosq->state = mosq_cs_new;
-	mosq->in_messages = NULL;
-	mosq->in_messages_last = NULL;
-	mosq->out_messages = NULL;
-	mosq->out_messages_last = NULL;
-	mosq->max_inflight_messages = 20;
+	mosq->max_qos = 2;
+	mosq->msgs_in.inflight_maximum = 20;
+	mosq->msgs_out.inflight_maximum = 20;
+	mosq->msgs_in.inflight_quota = 20;
+	mosq->msgs_out.inflight_quota = 20;
 	mosq->will = NULL;
 	mosq->on_connect = NULL;
 	mosq->on_publish = NULL;
@@ -181,8 +192,6 @@ int mosquitto_reinitialise(struct mosquitto *mosq, const char *id, bool clean_se
 	mosq->host = NULL;
 	mosq->port = 1883;
 	mosq->in_callback = false;
-	mosq->in_queue_len = 0;
-	mosq->out_queue_len = 0;
 	mosq->reconnect_delay = 1;
 	mosq->reconnect_delay_max = 1;
 	mosq->reconnect_exponential_backoff = false;
@@ -190,9 +199,11 @@ int mosquitto_reinitialise(struct mosquitto *mosq, const char *id, bool clean_se
 #ifdef WITH_TLS
 	mosq->ssl = NULL;
 	mosq->ssl_ctx = NULL;
+	mosq->ssl_ctx_defaults = true;
 	mosq->tls_cert_reqs = SSL_VERIFY_PEER;
 	mosq->tls_insecure = false;
 	mosq->want_write = false;
+	mosq->tls_ocsp_required = false;
 #endif
 #ifdef WITH_THREADING
 	pthread_mutex_init(&mosq->callback_mutex, NULL);
@@ -201,11 +212,17 @@ int mosquitto_reinitialise(struct mosquitto *mosq, const char *id, bool clean_se
 	pthread_mutex_init(&mosq->out_packet_mutex, NULL);
 	pthread_mutex_init(&mosq->current_out_packet_mutex, NULL);
 	pthread_mutex_init(&mosq->msgtime_mutex, NULL);
-	pthread_mutex_init(&mosq->in_message_mutex, NULL);
-	pthread_mutex_init(&mosq->out_message_mutex, NULL);
+	pthread_mutex_init(&mosq->msgs_in.mutex, NULL);
+	pthread_mutex_init(&mosq->msgs_out.mutex, NULL);
 	pthread_mutex_init(&mosq->mid_mutex, NULL);
 	mosq->thread_id = pthread_self();
 #endif
+	/* This must be after pthread_mutex_init(), otherwise the log mutex may be
+	 * used before being initialised. */
+	if(net__socketpair(&mosq->sockpairR, &mosq->sockpairW)){
+		log__printf(mosq, MOSQ_LOG_WARNING,
+				"Warning: Unable to open socket pair, outgoing publish commands may be delayed.");
+	}
 
 	return MOSQ_ERR_SUCCESS;
 }
@@ -213,15 +230,16 @@ int mosquitto_reinitialise(struct mosquitto *mosq, const char *id, bool clean_se
 
 void mosquitto__destroy(struct mosquitto *mosq)
 {
-	struct mosquitto__packet *packet;
 	if(!mosq) return;
 
 #ifdef WITH_THREADING
+#  ifdef HAVE_PTHREAD_CANCEL
 	if(mosq->threaded == mosq_ts_self && !pthread_equal(mosq->thread_id, pthread_self())){
 		pthread_cancel(mosq->thread_id);
 		pthread_join(mosq->thread_id, NULL);
 		mosq->threaded = mosq_ts_none;
 	}
+#  endif
 
 	if(mosq->id){
 		/* If mosq->id is not NULL then the client has already been initialised
@@ -233,8 +251,8 @@ void mosquitto__destroy(struct mosquitto *mosq)
 		pthread_mutex_destroy(&mosq->out_packet_mutex);
 		pthread_mutex_destroy(&mosq->current_out_packet_mutex);
 		pthread_mutex_destroy(&mosq->msgtime_mutex);
-		pthread_mutex_destroy(&mosq->in_message_mutex);
-		pthread_mutex_destroy(&mosq->out_message_mutex);
+		pthread_mutex_destroy(&mosq->msgs_in.mutex);
+		pthread_mutex_destroy(&mosq->msgs_out.mutex);
 		pthread_mutex_destroy(&mosq->mid_mutex);
 	}
 #endif
@@ -259,6 +277,7 @@ void mosquitto__destroy(struct mosquitto *mosq)
 	mosquitto__free(mosq->tls_ciphers);
 	mosquitto__free(mosq->tls_psk);
 	mosquitto__free(mosq->tls_psk_identity);
+	mosquitto__free(mosq->tls_alpn);
 #endif
 
 	mosquitto__free(mosq->address);
@@ -279,22 +298,9 @@ void mosquitto__destroy(struct mosquitto *mosq)
 	mosquitto__free(mosq->bind_address);
 	mosq->bind_address = NULL;
 
-	/* Out packet cleanup */
-	if(mosq->out_packet && !mosq->current_out_packet){
-		mosq->current_out_packet = mosq->out_packet;
-		mosq->out_packet = mosq->out_packet->next;
-	}
-	while(mosq->current_out_packet){
-		packet = mosq->current_out_packet;
-		/* Free data and reset values */
-		mosq->current_out_packet = mosq->out_packet;
-		if(mosq->out_packet){
-			mosq->out_packet = mosq->out_packet->next;
-		}
+	mosquitto_property_free_all(&mosq->connect_properties);
 
-		packet__cleanup(packet);
-		mosquitto__free(packet);
-	}
+	packet__cleanup_all_no_locks(mosq);
 
 	packet__cleanup(&mosq->in_packet);
 	if(mosq->sockpairR != INVALID_SOCKET){
@@ -341,80 +347,14 @@ bool mosquitto_want_write(struct mosquitto *mosq)
 }
 
 
-const char *mosquitto_strerror(int mosq_errno)
-{
-	switch(mosq_errno){
-		case MOSQ_ERR_CONN_PENDING:
-			return "Connection pending.";
-		case MOSQ_ERR_SUCCESS:
-			return "No error.";
-		case MOSQ_ERR_NOMEM:
-			return "Out of memory.";
-		case MOSQ_ERR_PROTOCOL:
-			return "A network protocol error occurred when communicating with the broker.";
-		case MOSQ_ERR_INVAL:
-			return "Invalid function arguments provided.";
-		case MOSQ_ERR_NO_CONN:
-			return "The client is not currently connected.";
-		case MOSQ_ERR_CONN_REFUSED:
-			return "The connection was refused.";
-		case MOSQ_ERR_NOT_FOUND:
-			return "Message not found (internal error).";
-		case MOSQ_ERR_CONN_LOST:
-			return "The connection was lost.";
-		case MOSQ_ERR_TLS:
-			return "A TLS error occurred.";
-		case MOSQ_ERR_PAYLOAD_SIZE:
-			return "Payload too large.";
-		case MOSQ_ERR_NOT_SUPPORTED:
-			return "This feature is not supported.";
-		case MOSQ_ERR_AUTH:
-			return "Authorisation failed.";
-		case MOSQ_ERR_ACL_DENIED:
-			return "Access denied by ACL.";
-		case MOSQ_ERR_UNKNOWN:
-			return "Unknown error.";
-		case MOSQ_ERR_ERRNO:
-			return strerror(errno);
-		case MOSQ_ERR_EAI:
-			return "Lookup error.";
-		case MOSQ_ERR_PROXY:
-			return "Proxy error.";
-		case MOSQ_ERR_MALFORMED_UTF8:
-			return "Malformed UTF-8";
-		default:
-			return "Unknown error.";
-	}
-}
-
-const char *mosquitto_connack_string(int connack_code)
-{
-	switch(connack_code){
-		case 0:
-			return "Connection Accepted.";
-		case 1:
-			return "Connection Refused: unacceptable protocol version.";
-		case 2:
-			return "Connection Refused: identifier rejected.";
-		case 3:
-			return "Connection Refused: broker unavailable.";
-		case 4:
-			return "Connection Refused: bad user name or password.";
-		case 5:
-			return "Connection Refused: not authorised.";
-		default:
-			return "Connection Refused: unknown reason.";
-	}
-}
-
 int mosquitto_sub_topic_tokenise(const char *subtopic, char ***topics, int *count)
 {
-	int len;
-	int hier_count = 1;
-	int start, stop;
-	int hier;
-	int tlen;
-	int i, j;
+	size_t len;
+	size_t hier_count = 1;
+	size_t start, stop;
+	size_t hier;
+	size_t tlen;
+	size_t i, j;
 
 	if(!subtopic || !topics || !count) return MOSQ_ERR_INVAL;
 
@@ -434,7 +374,6 @@ int mosquitto_sub_topic_tokenise(const char *subtopic, char ***topics, int *coun
 	if(!(*topics)) return MOSQ_ERR_NOMEM;
 
 	start = 0;
-	stop = 0;
 	hier = 0;
 
 	for(i=0; i<len+1; i++){
@@ -459,7 +398,7 @@ int mosquitto_sub_topic_tokenise(const char *subtopic, char ***topics, int *coun
 		}
 	}
 
-	*count = hier_count;
+	*count = (int)hier_count;
 
 	return MOSQ_ERR_SUCCESS;
 }

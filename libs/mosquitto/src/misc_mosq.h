@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2013-2020 Roger Light <roger@atchoo.org>
+Copyright (c) 2009-2020 Roger Light <roger@atchoo.org>
 
 All rights reserved. This program and the accompanying materials
 are made available under the terms of the Eclipse Public License 2.0
@@ -15,10 +15,14 @@ SPDX-License-Identifier: EPL-2.0 OR BSD-3-Clause
 Contributors:
    Roger Light - initial implementation and documentation.
 */
+#ifndef MISC_MOSQ_H
+#define MISC_MOSQ_H
 
-#ifndef TIME_MOSQ_H
-#define TIME_MOSQ_H
+#include <stdbool.h>
+#include <stdio.h>
 
-time_t mosquitto_time(void);
+FILE *mosquitto__fopen(const char *path, const char *mode, bool restrict_read);
+char *misc__trimblanks(char *str);
+char *fgets_extending(char **buf, int *buflen, FILE *stream);
 
 #endif

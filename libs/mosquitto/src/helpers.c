@@ -1,15 +1,17 @@
 /*
-Copyright (c) 2016-2019 Roger Light <roger@atchoo.org>
+Copyright (c) 2016-2020 Roger Light <roger@atchoo.org>
 
 All rights reserved. This program and the accompanying materials
-are made available under the terms of the Eclipse Public License v1.0
+are made available under the terms of the Eclipse Public License 2.0
 and Eclipse Distribution License v1.0 which accompany this distribution.
- 
+
 The Eclipse Public License is available at
-   http://www.eclipse.org/legal/epl-v10.html
+   https://www.eclipse.org/legal/epl-2.0/
 and the Eclipse Distribution License is available at
   http://www.eclipse.org/org/documents/edl-v10.php.
- 
+
+SPDX-License-Identifier: EPL-2.0 OR BSD-3-Clause
+
 Contributors:
    Roger Light - initial implementation and documentation.
 */
@@ -27,7 +29,6 @@ struct userdata__callback {
 	int (*callback)(struct mosquitto *, void *, const struct mosquitto_message *);
 	void *userdata;
 	int qos;
-	int rc;
 };
 
 struct userdata__simple {
@@ -41,6 +42,8 @@ struct userdata__simple {
 static void on_connect(struct mosquitto *mosq, void *obj, int rc)
 {
 	struct userdata__callback *userdata = obj;
+
+	UNUSED(rc);
 
 	mosquitto_subscribe(mosq, NULL, userdata->topic, userdata->qos);
 }
@@ -111,7 +114,7 @@ libmosq_EXPORT int mosquitto_subscribe_simple(
 
 	*messages = NULL;
 
-	userdata.messages = calloc(sizeof(struct mosquitto_message), msg_count);
+	userdata.messages = calloc(sizeof(struct mosquitto_message), (size_t)msg_count);
 	if(!userdata.messages){
 		return MOSQ_ERR_NOMEM;
 	}
@@ -166,7 +169,6 @@ libmosq_EXPORT int mosquitto_subscribe_callback(
 
 	cb_userdata.topic = topic;
 	cb_userdata.qos = qos;
-	cb_userdata.rc = 0;
 	cb_userdata.userdata = userdata;
 	cb_userdata.callback = callback;
 
@@ -212,14 +214,6 @@ libmosq_EXPORT int mosquitto_subscribe_callback(
 	}
 	rc = mosquitto_loop_forever(mosq, -1, 1);
 	mosquitto_destroy(mosq);
-	if(cb_userdata.rc){
-		rc = cb_userdata.rc;
-	}
-	//if(!rc && cb_userdata.max_msg_count == 0){
-		//return MOSQ_ERR_SUCCESS;
-	//}else{
-		//return rc;
-	//}
-	return MOSQ_ERR_SUCCESS;
+	return rc;
 }
 

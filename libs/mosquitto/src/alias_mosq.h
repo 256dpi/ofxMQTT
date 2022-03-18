@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2013-2020 Roger Light <roger@atchoo.org>
+Copyright (c) 2019-2020 Roger Light <roger@atchoo.org>
 
 All rights reserved. This program and the accompanying materials
 are made available under the terms of the Eclipse Public License 2.0
@@ -16,9 +16,13 @@ Contributors:
    Roger Light - initial implementation and documentation.
 */
 
-#ifndef TIME_MOSQ_H
-#define TIME_MOSQ_H
+#ifndef ALIAS_MOSQ_H
+#define ALIAS_MOSQ_H
 
-time_t mosquitto_time(void);
+#include "mosquitto_internal.h"
+
+int alias__add(struct mosquitto *mosq, const char *topic, uint16_t alias);
+int alias__find(struct mosquitto *mosq, char **topic, uint16_t alias);
+void alias__free_all(struct mosquitto *mosq);
 
 #endif

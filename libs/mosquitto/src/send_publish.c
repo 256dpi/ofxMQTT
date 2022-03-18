@@ -1,14 +1,16 @@
 /*
-Copyright (c) 2009-2019 Roger Light <roger@atchoo.org>
+Copyright (c) 2009-2020 Roger Light <roger@atchoo.org>
 
 All rights reserved. This program and the accompanying materials
-are made available under the terms of the Eclipse Public License v1.0
+are made available under the terms of the Eclipse Public License 2.0
 and Eclipse Distribution License v1.0 which accompany this distribution.
 
 The Eclipse Public License is available at
-   http://www.eclipse.org/legal/epl-v10.html
+   https://www.eclipse.org/legal/epl-2.0/
 and the Eclipse Distribution License is available at
   http://www.eclipse.org/org/documents/edl-v10.php.
+
+SPDX-License-Identifier: EPL-2.0 OR BSD-3-Clause
 
 Contributors:
    Roger Light - initial implementation and documentation.
@@ -29,14 +31,15 @@ Contributors:
 #include "mosquitto.h"
 #include "mosquitto_internal.h"
 #include "logging_mosq.h"
-#include "mqtt3_protocol.h"
+#include "mqtt_protocol.h"
 #include "memory_mosq.h"
 #include "net_mosq.h"
 #include "packet_mosq.h"
+#include "property_mosq.h"
 #include "send_mosq.h"
 
 
-int send__publish(struct mosquitto *mosq, uint16_t mid, const char *topic, uint32_t payloadlen, const void *payload, int qos, bool retain, bool dup)
+int send__publish(struct mosquitto *mosq, uint16_t mid, const char *topic, uint32_t payloadlen, const void *payload, uint8_t qos, bool retain, bool dup, const mosquitto_property *cmsg_props, const mosquitto_property *store_props, uint32_t expiry_interval)
 {
 #ifdef WITH_BROKER
 	size_t len;
@@ -50,13 +53,16 @@ int send__publish(struct mosquitto *mosq, uint16_t mid, const char *topic, uint3
 #endif
 #endif
 	assert(mosq);
-	assert(topic);
 
 #if defined(WITH_BROKER) && defined(WITH_WEBSOCKETS)
 	if(mosq->sock == INVALID_SOCKET && !mosq->wsi) return MOSQ_ERR_NO_CONN;
 #else
 	if(mosq->sock == INVALID_SOCKET) return MOSQ_ERR_NO_CONN;
 #endif
+
+	if(!mosq->retain_available){
+		retain = false;
+	}
 
 #ifdef WITH_BROKER
 	if(mosq->listener && mosq->listener->mount_point){
@@ -108,9 +114,9 @@ int send__publish(struct mosquitto *mosq, uint16_t mid, const char *topic, uint3
 						mosquitto__free(mapped_topic);
 						mapped_topic = topic_temp;
 					}
-					log__printf(NULL, MOSQ_LOG_DEBUG, "Sending PUBLISH to %s (d%d, q%d, r%d, m%d, '%s', ... (%ld bytes))", mosq->id, dup, qos, retain, mid, mapped_topic, (long)payloadlen);
+					log__printf(NULL, MOSQ_LOG_DEBUG, "Sending PUBLISH to %s (d%d, q%d, r%d, m%d, '%s', ... (%ld bytes))", SAFE_PRINT(mosq->id), dup, qos, retain, mid, mapped_topic, (long)payloadlen);
 					G_PUB_BYTES_SENT_INC(payloadlen);
-					rc =  send__real_publish(mosq, mid, mapped_topic, payloadlen, payload, qos, retain, dup);
+					rc =  send__real_publish(mosq, mid, mapped_topic, payloadlen, payload, qos, retain, dup, cmsg_props, store_props, expiry_interval);
 					mosquitto__free(mapped_topic);
 					return rc;
 				}
@@ -118,32 +124,69 @@ int send__publish(struct mosquitto *mosq, uint16_t mid, const char *topic, uint3
 		}
 	}
 #endif
-	log__printf(NULL, MOSQ_LOG_DEBUG, "Sending PUBLISH to %s (d%d, q%d, r%d, m%d, '%s', ... (%ld bytes))", mosq->id, dup, qos, retain, mid, topic, (long)payloadlen);
+	log__printf(NULL, MOSQ_LOG_DEBUG, "Sending PUBLISH to %s (d%d, q%d, r%d, m%d, '%s', ... (%ld bytes))", SAFE_PRINT(mosq->id), dup, qos, retain, mid, topic, (long)payloadlen);
 	G_PUB_BYTES_SENT_INC(payloadlen);
 #else
-	log__printf(mosq, MOSQ_LOG_DEBUG, "Client %s sending PUBLISH (d%d, q%d, r%d, m%d, '%s', ... (%ld bytes))", mosq->id, dup, qos, retain, mid, topic, (long)payloadlen);
+	log__printf(mosq, MOSQ_LOG_DEBUG, "Client %s sending PUBLISH (d%d, q%d, r%d, m%d, '%s', ... (%ld bytes))", SAFE_PRINT(mosq->id), dup, qos, retain, mid, topic, (long)payloadlen);
 #endif
 
-	return send__real_publish(mosq, mid, topic, payloadlen, payload, qos, retain, dup);
+	return send__real_publish(mosq, mid, topic, payloadlen, payload, qos, retain, dup, cmsg_props, store_props, expiry_interval);
 }
 
 
-int send__real_publish(struct mosquitto *mosq, uint16_t mid, const char *topic, uint32_t payloadlen, const void *payload, int qos, bool retain, bool dup)
+int send__real_publish(struct mosquitto *mosq, uint16_t mid, const char *topic, uint32_t payloadlen, const void *payload, uint8_t qos, bool retain, bool dup, const mosquitto_property *cmsg_props, const mosquitto_property *store_props, uint32_t expiry_interval)
 {
 	struct mosquitto__packet *packet = NULL;
-	int packetlen;
+	unsigned int packetlen;
+	unsigned int proplen = 0, varbytes;
 	int rc;
+	mosquitto_property expiry_prop;
 
 	assert(mosq);
-	assert(topic);
 
-	packetlen = 2+strlen(topic) + payloadlen;
+	if(topic){
+		packetlen = 2+(unsigned int)strlen(topic) + payloadlen;
+	}else{
+		packetlen = 2 + payloadlen;
+	}
 	if(qos > 0) packetlen += 2; /* For message id */
+	if(mosq->protocol == mosq_p_mqtt5){
+		proplen = 0;
+		proplen += property__get_length_all(cmsg_props);
+		proplen += property__get_length_all(store_props);
+		if(expiry_interval > 0){
+			expiry_prop.next = NULL;
+			expiry_prop.value.i32 = expiry_interval;
+			expiry_prop.identifier = MQTT_PROP_MESSAGE_EXPIRY_INTERVAL;
+			expiry_prop.client_generated = false;
+
+			proplen += property__get_length_all(&expiry_prop);
+		}
+
+		varbytes = packet__varint_bytes(proplen);
+		if(varbytes > 4){
+			/* FIXME - Properties too big, don't publish any - should remove some first really */
+			cmsg_props = NULL;
+			store_props = NULL;
+			expiry_interval = 0;
+		}else{
+			packetlen += proplen + varbytes;
+		}
+	}
+	if(packet__check_oversize(mosq, packetlen)){
+#ifdef WITH_BROKER
+		log__printf(NULL, MOSQ_LOG_NOTICE, "Dropping too large outgoing PUBLISH for %s (%d bytes)", SAFE_PRINT(mosq->id), packetlen);
+#else
+		log__printf(NULL, MOSQ_LOG_NOTICE, "Dropping too large outgoing PUBLISH (%d bytes)", packetlen);
+#endif
+		return MOSQ_ERR_OVERSIZE_PACKET;
+	}
+
 	packet = mosquitto__calloc(1, sizeof(struct mosquitto__packet));
 	if(!packet) return MOSQ_ERR_NOMEM;
 
 	packet->mid = mid;
-	packet->command = PUBLISH | ((dup&0x1)<<3) | (qos<<1) | retain;
+	packet->command = (uint8_t)(CMD_PUBLISH | (uint8_t)((dup&0x1)<<3) | (uint8_t)(qos<<1) | retain);
 	packet->remaining_length = packetlen;
 	rc = packet__alloc(packet);
 	if(rc){
@@ -151,9 +194,22 @@ int send__real_publish(struct mosquitto *mosq, uint16_t mid, const char *topic, 
 		return rc;
 	}
 	/* Variable header (topic string) */
-	packet__write_string(packet, topic, strlen(topic));
+	if(topic){
+		packet__write_string(packet, topic, (uint16_t)strlen(topic));
+	}else{
+		packet__write_uint16(packet, 0);
+	}
 	if(qos > 0){
 		packet__write_uint16(packet, mid);
+	}
+
+	if(mosq->protocol == mosq_p_mqtt5){
+		packet__write_varint(packet, proplen);
+		property__write_all(packet, cmsg_props, false);
+		property__write_all(packet, store_props, false);
+		if(expiry_interval > 0){
+			property__write_all(packet, &expiry_prop, false);
+		}
 	}
 
 	/* Payload */
