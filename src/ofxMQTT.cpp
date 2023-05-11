@@ -149,6 +149,8 @@ void ofxMQTT::_on_message(const struct mosquitto_message *message) {
   ofxMQTTMessage msg; 
   msg.topic = message->topic;
   msg.payload = payload;
+  msg.retain = message->retain;
+  msg.qos = message->qos;
 
   ofNotifyEvent(onMessage, msg, this);
   received_messages++;
