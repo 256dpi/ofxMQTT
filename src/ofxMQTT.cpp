@@ -109,7 +109,9 @@ void ofxMQTT::unsubscribe(string topic) {
 }
 
 void ofxMQTT::update() {
-  int rc1 = mosquitto_loop(mosq, 0, 1);
+  received_messages = 0;
+
+  int rc1 = mosquitto_loop(mosq, 0, 100);
   if (rc1 != MOSQ_ERR_SUCCESS) {
     ofLogError("ofxMQTT") << "Loop error: " << mosquitto_strerror(rc1);
 
@@ -118,6 +120,8 @@ void ofxMQTT::update() {
       ofLogError("ofxMQTT") << "Reconnect error: " << mosquitto_strerror(rc2);
     }
   }
+  if (received_messages>0) update();
+
 }
 
 bool ofxMQTT::connected() { return alive; }
@@ -147,4 +151,5 @@ void ofxMQTT::_on_message(const struct mosquitto_message *message) {
   msg.payload = payload;
 
   ofNotifyEvent(onMessage, msg, this);
+  received_messages++;
 }

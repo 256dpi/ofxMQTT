@@ -10,6 +10,7 @@ class ofxMQTT {
  private:
   struct mosquitto *mosq;
   bool alive = false;
+  size_t received_messages {0};
 
   string hostname;
   int port;
