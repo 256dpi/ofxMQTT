@@ -4,6 +4,8 @@
 struct ofxMQTTMessage {
   string topic;
   string payload;
+  bool retain;
+  int qos;
 };
 
 class ofxMQTT {
