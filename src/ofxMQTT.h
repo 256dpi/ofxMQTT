@@ -13,6 +13,7 @@ class ofxMQTT {
   struct mosquitto *mosq;
   bool alive = false;
 
+  size_t received_messages;
   string hostname;
   int port;
   string clientId;
@@ -43,6 +44,7 @@ class ofxMQTT {
   void update();
   bool connected();
   void disconnect();
+  bool self_loop = true;
 
   ofEvent<void> onOnline;
   ofEvent<ofxMQTTMessage> onMessage;

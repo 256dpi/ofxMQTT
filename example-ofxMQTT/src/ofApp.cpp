@@ -32,5 +32,19 @@ void ofApp::onMessage(ofxMQTTMessage &msg){
 }
 
 void ofApp::keyPressed(int key){
-  client.publish("hello", "world");
+  if (key=='s') {
+    client.self_loop = !client.self_loop;
+    ofLogNotice("Client is now self-looping:") << client.self_loop;
+  } else if (key=='2') {
+    ofLogNotice("Setting frame rate") << 2;
+    ofSetFrameRate(2);
+  } else if (key=='6') {
+    ofLogNotice("Setting frame rate") << 60;
+    ofSetFrameRate(60);
+  } else if (key=='b') {
+    for (size_t i=0; i<5; i++)
+      client.publish("hello", "burst");
+  } else {
+    client.publish("hello", "world");
+  }
 }

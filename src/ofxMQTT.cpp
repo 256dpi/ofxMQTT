@@ -118,7 +118,9 @@ std::string ofxMQTT::lib_version() {
   mosquitto_lib_version(&x, &y, &z);
   return ofToString(x) + "." + ofToString(y) + "." + ofToString(z);
 }
+    received_messages = 0;
     }
+	  if (received_messages && self_loop) update();
   }
 }
 
@@ -147,6 +149,6 @@ void ofxMQTT::_on_message(const struct mosquitto_message *message) {
   ofxMQTTMessage msg; 
   msg.topic = message->topic;
   msg.payload = payload;
-
+  received_messages++;
   ofNotifyEvent(onMessage, msg, this);
 }
