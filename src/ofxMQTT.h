@@ -12,7 +12,7 @@ class ofxMQTT {
  private:
   struct mosquitto *mosq;
   bool alive = false;
-
+  bool threaded = false;
   size_t received_messages;
   string hostname;
   int port;
@@ -26,7 +26,7 @@ class ofxMQTT {
   int nextMid();
 
  public:
-  ofxMQTT();
+  ofxMQTT(bool threaded = false);
   ~ofxMQTT();
 
   std::string lib_version();
@@ -44,8 +44,11 @@ class ofxMQTT {
   void update();
   bool connected();
   void disconnect();
+	
   bool self_loop = true;
 
+  std::optional<ofxMQTTMessage> getNextMessage();
+  ofThreadChannel<ofxMQTTMessage> messagesChannel;
   ofEvent<void> onOnline;
   ofEvent<ofxMQTTMessage> onMessage;
   ofEvent<void> onOffline;
@@ -54,4 +57,9 @@ class ofxMQTT {
   void _on_connect(int rc);
   void _on_disconnect(int rc);
   void _on_message(const struct mosquitto_message *message);
+};
+
+class ofxThreadedMQTT: public ofxMQTT {
+public:
+  ofxThreadedMQTT():ofxMQTT(true) {}
 };

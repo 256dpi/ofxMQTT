@@ -19,7 +19,7 @@ static void on_message_wrapper(struct mosquitto *, void *userData, const struct 
 
 /* ofxMQTT */
 
-ofxMQTT::ofxMQTT() {
+ofxMQTT::ofxMQTT(bool threaded) : threaded(threaded) {
   mosquitto_lib_init();
 
   mosq = mosquitto_new("ofxMQTT", true, this);
@@ -78,14 +78,30 @@ bool ofxMQTT::connect(string clientId, string username, string password) {
     mosquitto_will_set(mosq, willTopic.c_str(), (int)willPayload.length(), willPayload.c_str(), 0, false);
   }
 
-  int rc = mosquitto_connect(mosq, hostname.c_str(), port, 60);
-
-  if (rc != MOSQ_ERR_SUCCESS) {
-    ofLogError("ofxMQTT") << "Connect error: " << mosquitto_strerror(rc);
-    return false;
+   if (threaded) {
+    int rc = mosquitto_connect(mosq, hostname.c_str(), port, 60);
+    if (rc == MOSQ_ERR_SUCCESS) {
+      int rt = mosquitto_loop_start(mosq);
+      if (rt == MOSQ_ERR_SUCCESS) {
+        return true;
+      } else {
+        ofLogError("ofxMQTT::connect() THREADED mosquitto_loop_start res:") << mosquitto_strerror(rt);
+        ofLogNotice("ofxMQTT::connect()") << "Perhaps libmosquitto compiled without -DWITH_THREADING?";
+      }
+    } else {
+      ofLogError("ofxMQTT::connect() THREADED mosquitto_connect_async res:") << mosquitto_strerror(rc);
+    }
+  } else {
+    int rc = mosquitto_connect(mosq, hostname.c_str(), port, 60);
+    if (rc != MOSQ_ERR_SUCCESS) {
+      ofLogError("ofxMQTT") << "Connect error: " << mosquitto_strerror(rc);
+    } else {
+      mosquitto_loop(mosq, 1, 0);
+      return true;
+    }
   }
 
-  return true;
+  return false;
 }
 
 void ofxMQTT::publish(string topic, int qos, bool retain) { publish(topic, "", qos, retain); }
@@ -105,20 +121,33 @@ void ofxMQTT::unsubscribe(string topic) {
   mosquitto_unsubscribe(mosq, &mid, topic.c_str());
 }
 
-void ofxMQTT::update() {
-  int rc1 = mosquitto_loop(mosq, 0, 1);
-  if (rc1 != MOSQ_ERR_SUCCESS) {
-    ofLogError("ofxMQTT") << "Loop error: " << mosquitto_strerror(rc1);
+std::optional<ofxMQTTMessage> ofxMQTT::getNextMessage() {
+  if (!messagesChannel.empty()) {
+	ofxMQTTMessage message;
+	if (messagesChannel.tryReceive(message)) {
+	  return {message};
+	}
+  }
+  return {};
+}
 
-    int rc2 = mosquitto_reconnect(mosq);
-    if (rc2 != MOSQ_ERR_SUCCESS) {
-      ofLogError("ofxMQTT") << "Reconnect error: " << mosquitto_strerror(rc2);
 std::string ofxMQTT::lib_version() {
   int x, y, z;
   mosquitto_lib_version(&x, &y, &z);
   return ofToString(x) + "." + ofToString(y) + "." + ofToString(z);
 }
+
+void ofxMQTT::update() {
+  if (!threaded) {
     received_messages = 0;
+    int rc1 = mosquitto_loop(mosq, 0, 1);
+    if (rc1 != MOSQ_ERR_SUCCESS) {
+      ofLogError("ofxMQTT") << "Loop error: " << mosquitto_strerror(rc1);
+
+      int rc2 = mosquitto_reconnect(mosq);
+      if (rc2 != MOSQ_ERR_SUCCESS) {
+        ofLogError("ofxMQTT") << "Reconnect error: " << mosquitto_strerror(rc2);
+      }
     }
 	  if (received_messages && self_loop) update();
   }
@@ -151,4 +180,5 @@ void ofxMQTT::_on_message(const struct mosquitto_message *message) {
   msg.payload = payload;
   received_messages++;
   ofNotifyEvent(onMessage, msg, this);
+  messagesChannel.send(std::move(msg));
 }
