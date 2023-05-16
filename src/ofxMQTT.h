@@ -28,6 +28,8 @@ class ofxMQTT {
   ofxMQTT();
   ~ofxMQTT();
 
+  std::string lib_version();
+
   void begin(string hostname);
   void begin(string hostname, int port);
   void setWill(string topic);
