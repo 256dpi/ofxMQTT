@@ -23,9 +23,6 @@ ofxMQTT::ofxMQTT() {
   mosquitto_lib_init();
 
   mosq = mosquitto_new("ofxMQTT", true, this);
-  mosquitto_connect_callback_set(mosq, on_connect_wrapper);
-  mosquitto_disconnect_callback_set(mosq, on_disconnect_wrapper);
-  mosquitto_message_callback_set(mosq, on_message_wrapper);
 }
 
 ofxMQTT::~ofxMQTT() {
