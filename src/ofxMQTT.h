@@ -1,3 +1,6 @@
+#ifndef OFXMQTT_H
+#define OFXMQTT_H
+
 #include "mosquitto.h"
 #include "ofMain.h"
 
@@ -63,3 +66,4 @@ class ofxThreadedMQTT: public ofxMQTT {
 public:
   ofxThreadedMQTT():ofxMQTT(true) {}
 };
+#endif
