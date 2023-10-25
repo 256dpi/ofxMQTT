@@ -4,19 +4,21 @@
 #include "mosquitto.h"
 #include "ofMain.h"
 
+#//define ofxMQTT_THREADED 1
+
+
 struct ofxMQTTMessage {
   string topic;
   string payload;
-  bool retain;
-  int qos;
+    bool retain;
+    int qos;
 };
 
 class ofxMQTT {
  private:
   struct mosquitto *mosq;
-  bool alive = false;
-  bool threaded = false;
-  size_t received_messages;
+  std::atomic<bool> alive = false;
+
   string hostname;
   int port;
   string clientId;
@@ -25,14 +27,12 @@ class ofxMQTT {
   string willTopic;
   string willPayload;
 
-  int mid = 0;
+  std::atomic<int> mid = 0;
   int nextMid();
 
  public:
-  ofxMQTT(bool threaded = false);
+  ofxMQTT();
   ~ofxMQTT();
-
-  std::string lib_version();
 
   void begin(string hostname);
   void begin(string hostname, int port);
@@ -40,18 +40,14 @@ class ofxMQTT {
   void setWill(string topic, string payload);
   bool connect(string clientId);
   bool connect(string clientId, string username, string password);
-  void publish(string topic, int qos = 0, bool retain = false);
-  void publish(string topic, string payload, int qos = 0, bool retain = false);
-  void subscribe(string topic, int qos = 0);
+  auto publish(string topic, int qos = 0, bool retain = false) -> int;
+  auto publish(string topic, string payload, int qos = 0, bool retain = false) -> int;
+  bool subscribe(string topic, int qos = 0);
   void unsubscribe(string topic);
   void update();
   bool connected();
   void disconnect();
-	
-  bool self_loop = true;
 
-  std::optional<ofxMQTTMessage> getNextMessage();
-  ofThreadChannel<ofxMQTTMessage> messagesChannel;
   ofEvent<void> onOnline;
   ofEvent<ofxMQTTMessage> onMessage;
   ofEvent<void> onOffline;
@@ -62,8 +58,4 @@ class ofxMQTT {
   void _on_message(const struct mosquitto_message *message);
 };
 
-class ofxThreadedMQTT: public ofxMQTT {
-public:
-  ofxThreadedMQTT():ofxMQTT(true) {}
-};
 #endif
