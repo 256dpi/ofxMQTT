@@ -26,6 +26,9 @@ class ofxMQTT {
   string password;
   string willTopic;
   string willPayload;
+	
+	std::unique_ptr<ofThreadChannel<ofxMQTTMessage>> messagesChannel = std::make_unique<ofThreadChannel<ofxMQTTMessage>>();
+	ofxMQTTMessage buffer_message;
 
   std::atomic<int> mid = 0;
   int nextMid();
@@ -51,6 +54,14 @@ class ofxMQTT {
   ofEvent<void> onOnline;
   ofEvent<ofxMQTTMessage> onMessage;
   ofEvent<void> onOffline;
+
+	std::optional<ofxMQTTMessage> getMessage() {
+		if (messagesChannel->tryReceive(buffer_message)) {
+			return buffer_message;
+		} else {
+			return {};
+		}
+	}
 
   // never call these functions:
   void _on_connect(int rc);

@@ -21,6 +21,8 @@ static void on_message_wrapper(struct mosquitto *, void *userData, const struct 
 
 
 ofxMQTT::ofxMQTT() {
+	
+	
   mosquitto_lib_init();
   mosq = mosquitto_new("ofxMQTT", true, this);
     
@@ -206,4 +208,7 @@ void ofxMQTT::_on_message(const struct mosquitto_message *message) {
 
   ofNotifyEvent(onMessage, msg, this);
     got_++;
+	
+	messagesChannel->send(std::move(msg));
+	
 }
