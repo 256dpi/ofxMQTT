@@ -6,11 +6,12 @@ void ofApp::setup(){
 
   ofAddListener(client.onOnline, this, &ofApp::onOnline);
   ofAddListener(client.onOffline, this, &ofApp::onOffline);
-  ofAddListener(client.onMessage, this, &ofApp::onMessage);
 }
 
 void ofApp::update() {
-  client.update();
+  while (auto m = client.getNextMessage()) {
+    ofLogNotice(m->topic) << m->payload;
+  }
 }
 
 void ofApp::exit(){
@@ -27,15 +28,8 @@ void ofApp::onOffline(){
   ofLog() << "offline";
 }
 
-void ofApp::onMessage(ofxMQTTMessage &msg){
-  ofLog() << "message: " << msg.topic << " - " << msg.payload;
-}
-
 void ofApp::keyPressed(int key){
-  if (key=='s') {
-    client.self_loop = !client.self_loop;
-    ofLogNotice("Client is now self-looping:") << client.self_loop;
-  } else if (key=='2') {
+  if (key=='2') {
     ofLogNotice("Setting frame rate") << 2;
     ofSetFrameRate(2);
   } else if (key=='6') {

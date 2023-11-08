@@ -1,15 +1,23 @@
+#ifndef OFXMQTT_H
+#define OFXMQTT_H
+
 #include "mosquitto.h"
 #include "ofMain.h"
+
+#//define ofxMQTT_THREADED 1
+
 
 struct ofxMQTTMessage {
   string topic;
   string payload;
+    bool retain;
+    int qos;
 };
 
 class ofxMQTT {
  private:
   struct mosquitto *mosq;
-  bool alive = false;
+  std::atomic<bool> alive = false;
 
   string hostname;
   int port;
@@ -18,8 +26,11 @@ class ofxMQTT {
   string password;
   string willTopic;
   string willPayload;
+	
+	std::unique_ptr<ofThreadChannel<ofxMQTTMessage>> messagesChannel = std::make_unique<ofThreadChannel<ofxMQTTMessage>>();
+	ofxMQTTMessage buffer_message;
 
-  int mid = 0;
+  std::atomic<int> mid = 0;
   int nextMid();
 
  public:
@@ -32,9 +43,9 @@ class ofxMQTT {
   void setWill(string topic, string payload);
   bool connect(string clientId);
   bool connect(string clientId, string username, string password);
-  void publish(string topic, int qos = 0, bool retain = false);
-  void publish(string topic, string payload, int qos = 0, bool retain = false);
-  void subscribe(string topic, int qos = 0);
+  auto publish(string topic, int qos = 0, bool retain = false) -> int;
+  auto publish(string topic, string payload, int qos = 0, bool retain = false) -> int;
+  bool subscribe(string topic, int qos = 0);
   void unsubscribe(string topic);
   void update();
   bool connected();
@@ -44,8 +55,18 @@ class ofxMQTT {
   ofEvent<ofxMQTTMessage> onMessage;
   ofEvent<void> onOffline;
 
+	std::optional<ofxMQTTMessage> getMessage() {
+		if (messagesChannel->tryReceive(buffer_message)) {
+			return buffer_message;
+		} else {
+			return {};
+		}
+	}
+
   // never call these functions:
   void _on_connect(int rc);
   void _on_disconnect(int rc);
   void _on_message(const struct mosquitto_message *message);
 };
+
+#endif
